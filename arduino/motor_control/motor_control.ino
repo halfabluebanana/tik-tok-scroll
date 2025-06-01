@@ -10,9 +10,9 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define MOTOR3 8
 #define MOTOR4 12
 
-// Define motor limits
-#define MOTOR_MIN_PULSE  500  // Min pulse length (microseconds)
-#define MOTOR_MAX_PULSE  2500 // Max pulse length (microseconds)
+// Define motor limits - Increased range for more movement
+#define MOTOR_MIN_PULSE  1000  // Increased from 500 for more range
+#define MOTOR_MAX_PULSE  2000  // Adjusted from 2500 for better control
 #define MOTOR_FREQ 50 // Analog motors run at ~50 Hz
 
 String inputString = "";    // String to hold incoming data
@@ -64,7 +64,8 @@ void setMotorSpeed(uint8_t motorNum, int speed) {
   if (speed >= 0) {
     pwm.writeMicroseconds(motorNum, pulse);
   } else {
-    pwm.writeMicroseconds(motorNum, MOTOR_MIN_PULSE);
+    // For negative speeds, use the same pulse width but in the opposite direction
+    pwm.writeMicroseconds(motorNum, MOTOR_MAX_PULSE - (pulse - MOTOR_MIN_PULSE));
   }
 }
 
@@ -98,13 +99,13 @@ void loop() {
         Serial.print(", Direction: ");
         Serial.println(scrollDirection);
         
-        // Map scroll position (0-255) to motor speed (-100 to 100)
+        // Map scroll position (0-255) to motor speed (-100 to 100) with increased range
         int motorSpeed = map(scrollPosition, 0, 255, -100, 100);
         
         Serial.print("Mapped to motor speed: ");
         Serial.println(motorSpeed);
         
-        // Control motors based on scroll direction
+        // Control motors based on scroll direction with increased speed
         if (scrollDirection == 1) {  // Scrolling down
           Serial.println("Scrolling down - Setting motors");
           setMotorSpeed(MOTOR1, motorSpeed);

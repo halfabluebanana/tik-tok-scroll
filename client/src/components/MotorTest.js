@@ -28,19 +28,19 @@ const MotorTest = () => {
     <TestContainer>
       <h2>Motor Test Controls</h2>
       <ButtonGroup>
-        <TestButton onClick={() => sendMotorCommand(100, 1)}>
+        <TestButton onClick={() => sendMotorCommand(255, 1)}>
           Full Speed Forward
         </TestButton>
-        <TestButton onClick={() => sendMotorCommand(50, 1)}>
+        <TestButton onClick={() => sendMotorCommand(127, 1)}>
           Half Speed Forward
         </TestButton>
         <TestButton onClick={() => sendMotorCommand(0, 0)}>
           Stop
         </TestButton>
-        <TestButton onClick={() => sendMotorCommand(50, 0)}>
+        <TestButton onClick={() => sendMotorCommand(127, 0)}>
           Half Speed Backward
         </TestButton>
-        <TestButton onClick={() => sendMotorCommand(100, 0)}>
+        <TestButton onClick={() => sendMotorCommand(255, 0)}>
           Full Speed Backward
         </TestButton>
       </ButtonGroup>

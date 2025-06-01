@@ -182,14 +182,26 @@ app.use('/uploads/', (req, res, next) => {
 
 // Configure serial port for Arduino
 const serialPort = new SerialPort({
-  path: '/dev/tty.usbmodem2101',
+  path: '/dev/tty.usbmodem2101',  // You may need to update this path
   baudRate: 9600,
-  autoOpen: true  // Changed to true to open immediately
+  autoOpen: true
 });
 
 // Add error handling for serial port
 serialPort.on('error', (err) => {
   console.error('Serial port error:', err);
+  // Attempt to reopen the port after a delay
+  setTimeout(() => {
+    if (!serialPort.isOpen) {
+      serialPort.open((err) => {
+        if (err) {
+          console.error('Failed to reopen serial port:', err);
+        } else {
+          console.log('Serial port reopened successfully');
+        }
+      });
+    }
+  }, 1000);
 });
 
 serialPort.on('open', () => {
@@ -198,33 +210,27 @@ serialPort.on('open', () => {
 
 serialPort.on('close', () => {
   console.log('Serial port closed');
-});
-
-// Function to ensure serial port is open before writing
-function ensureSerialPortOpen() {
-  return new Promise((resolve, reject) => {
-    if (serialPort.isOpen) {
-      resolve();
-    } else {
+  // Attempt to reopen the port after a delay
+  setTimeout(() => {
+    if (!serialPort.isOpen) {
       serialPort.open((err) => {
         if (err) {
-          console.error('Error opening serial port:', err);
-          reject(err);
+          console.error('Failed to reopen serial port:', err);
         } else {
-          resolve();
+          console.log('Serial port reopened successfully');
         }
       });
     }
-  });
-}
+  }, 1000);
+});
 
 // Function to map scroll metrics to motor values
 function mapScrollToMotor(scrollMetrics) {
-  // Map scroll position (0-100) to motor speed (0-255)
-  const motorSpeed = Math.floor((scrollMetrics.scrollPosition / 100) * 255);
+  // Use the scroll position directly (0-255)
+  const motorSpeed = scrollMetrics.scrollPosition;
   
   // Map scroll direction to motor direction
-  const motorDirection = scrollMetrics.scrollDirection === 'down' ? 1 : 0;
+  const motorDirection = scrollMetrics.scrollDirection;
   
   console.log('Scroll metrics:', scrollMetrics);
   console.log('Mapped to motor values:', { speed: motorSpeed, direction: motorDirection });
@@ -237,12 +243,25 @@ function mapScrollToMotor(scrollMetrics) {
 
 // Function to send motor commands to Arduino
 async function sendMotorCommand(motorData) {
-  console.log('lets gooo lets gooo lets gooo lets gooo');
+  console.log('Sending motor command...');
   const command = `${motorData.speed},${motorData.direction}\n`;
-  console.log('Sending command to Arduino:', command);
+  console.log('Command:', command);
   
   try {
-    await ensureSerialPortOpen();
+    if (!serialPort.isOpen) {
+      console.log('Serial port not open, attempting to open...');
+      await new Promise((resolve, reject) => {
+        serialPort.open((err) => {
+          if (err) {
+            console.error('Error opening serial port:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+    }
+    
     serialPort.write(command, (err) => {
       if (err) {
         console.error('Error writing to serial port:', err);
@@ -251,7 +270,7 @@ async function sendMotorCommand(motorData) {
       }
     });
   } catch (err) {
-    console.error('Failed to ensure serial port is open:', err);
+    console.error('Failed to send motor command:', err);
   }
 }
 
