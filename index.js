@@ -275,15 +275,25 @@ async function sendMotorCommand(motorData) {
 }
 
 // Update the scroll metrics endpoint
+let scrollMetricsTimeout = null;
+
 app.post("/api/scroll-metrics", (req, res) => {
   const scrollMetrics = req.body;
   console.log('Received scroll metrics:', scrollMetrics);
   
-  // Map scroll metrics to motor values
-  const motorData = mapScrollToMotor(scrollMetrics);
-  
-  // Send motor commands to Arduino
-  sendMotorCommand(motorData);
+  // Clear any existing timeout
+  if (scrollMetricsTimeout) {
+    clearTimeout(scrollMetricsTimeout);
+  }
+
+  // Debounce the motor command
+  scrollMetricsTimeout = setTimeout(() => {
+    // Map scroll metrics to motor values
+    const motorData = mapScrollToMotor(scrollMetrics);
+    
+    // Send motor commands to Arduino
+    sendMotorCommand(motorData);
+  }, 100); // 100ms debounce
   
   res.json({ success: true });
 });
