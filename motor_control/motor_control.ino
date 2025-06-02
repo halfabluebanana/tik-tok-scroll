@@ -10,9 +10,9 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define MOTOR3 8
 #define MOTOR4 12
 
-// Define motor limits - Increased range for more movement
-#define MOTOR_MIN_PULSE  1000  // Increased from 500 for more range
-#define MOTOR_MAX_PULSE  2000  // Adjusted from 2500 for better control
+// Define motor limits
+#define MOTOR_MIN_PULSE  1000
+#define MOTOR_MAX_PULSE  2000
 #define MOTOR_FREQ 50 // Analog motors run at ~50 Hz
 
 String inputString = "";    // String to hold incoming data
@@ -20,7 +20,10 @@ boolean stringComplete = false;  // Whether the string is complete
 
 void setup() {
   // Initialize serial communication
-  Serial.begin(9600);  // Changed to 9600 for Arduino Uno
+  Serial.begin(9600);
+  while (!Serial) {
+    ; // Wait for serial port to connect
+  }
   
   Serial.println("Scroll-Controlled Motor System");
   Serial.println("Waiting for commands...");
@@ -35,6 +38,10 @@ void setup() {
   
   delay(100);
   
+  // Test each motor
+  Serial.println("Testing motors...");
+  testMotors();
+  
   // Initialize all motors to stop
   setMotorSpeed(MOTOR1, 0);
   setMotorSpeed(MOTOR2, 0);
@@ -42,6 +49,40 @@ void setup() {
   setMotorSpeed(MOTOR4, 0);
   
   Serial.println("Motors initialized to stop position");
+}
+
+// Test function to verify motor control
+void testMotors() {
+  // Test forward
+  Serial.println("Testing forward movement...");
+  setMotorSpeed(MOTOR1, 50);
+  setMotorSpeed(MOTOR2, -50);
+  setMotorSpeed(MOTOR3, 50);
+  setMotorSpeed(MOTOR4, -50);
+  delay(1000);
+  
+  // Stop
+  Serial.println("Stopping motors...");
+  setMotorSpeed(MOTOR1, 0);
+  setMotorSpeed(MOTOR2, 0);
+  setMotorSpeed(MOTOR3, 0);
+  setMotorSpeed(MOTOR4, 0);
+  delay(1000);
+  
+  // Test backward
+  Serial.println("Testing backward movement...");
+  setMotorSpeed(MOTOR1, -50);
+  setMotorSpeed(MOTOR2, 50);
+  setMotorSpeed(MOTOR3, -50);
+  setMotorSpeed(MOTOR4, 50);
+  delay(1000);
+  
+  // Stop
+  Serial.println("Stopping motors...");
+  setMotorSpeed(MOTOR1, 0);
+  setMotorSpeed(MOTOR2, 0);
+  setMotorSpeed(MOTOR3, 0);
+  setMotorSpeed(MOTOR4, 0);
 }
 
 // Helper function to set motor speed
@@ -81,31 +122,25 @@ void loop() {
       String posStr = inputString.substring(0, commaIndex);
       String dirStr = inputString.substring(commaIndex + 1);
       
-      // Debug: Print parsed values
-      Serial.print("Parsed position: ");
-      Serial.println(posStr);
-      Serial.print("Parsed direction: ");
-      Serial.println(dirStr);
-      
       int scrollPosition = posStr.toInt();
       int scrollDirection = dirStr.toInt();
+      
+      Serial.print("Parsed values - Position: ");
+      Serial.print(scrollPosition);
+      Serial.print(", Direction: ");
+      Serial.println(scrollDirection);
       
       // Validate the parsed values
       if (scrollPosition >= 0 && scrollPosition <= 255 && 
           (scrollDirection == 0 || scrollDirection == 1)) {
         
-        Serial.print("Valid values - Position: ");
-        Serial.print(scrollPosition);
-        Serial.print(", Direction: ");
-        Serial.println(scrollDirection);
-        
-        // Map scroll position (0-255) to motor speed (-100 to 100) with increased range
+        // Map scroll position (0-255) to motor speed (-100 to 100)
         int motorSpeed = map(scrollPosition, 0, 255, -100, 100);
         
         Serial.print("Mapped to motor speed: ");
         Serial.println(motorSpeed);
         
-        // Control motors based on scroll direction with increased speed
+        // Control motors based on scroll direction
         if (scrollDirection == 1) {  // Scrolling down
           Serial.println("Scrolling down - Setting motors");
           setMotorSpeed(MOTOR1, motorSpeed);
@@ -136,10 +171,6 @@ void loop() {
 void serialEvent() {
   while (Serial.available()) {
     char inChar = (char)Serial.read();
-    
-    // Debug: Print received character
-    Serial.print("Received char: ");
-    Serial.println(inChar);
     
     // Only add valid characters to the input string
     if (inChar >= 32 && inChar <= 126) {  // Printable ASCII characters

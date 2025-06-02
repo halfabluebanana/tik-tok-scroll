@@ -74,10 +74,16 @@ const Video = ({
         muted="muted"
         ref={videoRef}
         onClick={onVideoClick}
-        src={`http://localhost:3001/uploads/${url}`}
+        src={`http://localhost:3001/uploads/${encodeURIComponent(url)}`}
         onEnded={onEnded}
         onError={(e) => {
           console.error('Video error:', e);
+          console.error('Video error details:', {
+            error: e.target.error,
+            networkState: e.target.networkState,
+            readyState: e.target.readyState,
+            src: e.target.src
+          });
           if (videoRef.current) {
             videoRef.current.pause();
             setPlaying(false);

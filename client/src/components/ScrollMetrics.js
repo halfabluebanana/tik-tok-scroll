@@ -10,11 +10,26 @@ const ScrollMetrics = () => {
     averageSpeed: 0,
     totalDistance: 0,
     scrollPosition: 0,
-    direction: 'none' // 'up', 'down', or 'none'
+    direction: 'none', // 'up', 'down', or 'none'
+    motorSpeed: 0,     // 0-255
+    motorDirection: 0  // 0 for backward, 1 for forward
   });
   const [lastScrollY, setLastScrollY] = useState(0);
   const [lastScrollTime, setLastScrollTime] = useState(Date.now());
   const [speedHistory, setSpeedHistory] = useState([]);
+
+  // Function to map scroll speed to motor speed (0-255)
+  const mapSpeedToMotor = (speed) => {
+    // Map speed to 0-255 range with a minimum threshold
+    const minSpeed = 50;  // Minimum speed to start motor movement
+    const maxSpeed = 500; // Maximum speed for full motor power
+    
+    if (Math.abs(speed) < minSpeed) return 0;
+    
+    // Map the speed to 0-255 range
+    const mappedSpeed = Math.min(255, Math.round((Math.abs(speed) - minSpeed) * (255 / (maxSpeed - minSpeed))));
+    return mappedSpeed;
+  };
 
   // Function to send metrics to backend
   const sendMetricsToBackend = async (metrics) => {
@@ -25,8 +40,8 @@ const ScrollMetrics = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          scrollPosition: Math.min(100, Math.max(0, (metrics.scrollPosition / window.innerHeight) * 100)),
-          scrollDirection: metrics.direction === 'down' ? 1 : 0
+          scrollPosition: metrics.motorSpeed,
+          scrollDirection: metrics.motorDirection
         }),
       });
       
@@ -65,12 +80,18 @@ const ScrollMetrics = () => {
       const newSpeedHistory = [...speedHistory, currentSpeed].slice(-10);
       const averageSpeed = newSpeedHistory.reduce((a, b) => a + b, 0) / newSpeedHistory.length;
 
+      // Map speed to motor speed
+      const motorSpeed = mapSpeedToMotor(currentSpeed);
+      const motorDirection = direction === 'down' ? 1 : 0;
+
       const newMetrics = {
         currentSpeed: Math.round(currentSpeed),
         averageSpeed: Math.round(averageSpeed),
         totalDistance: Math.round(metrics.totalDistance + Math.abs(scrollDiff)),
         scrollPosition: Math.round(currentScrollY),
-        direction: direction
+        direction: direction,
+        motorSpeed: motorSpeed,
+        motorDirection: motorDirection
       };
 
       console.log('Scroll Metrics:', newMetrics);
@@ -104,20 +125,12 @@ const ScrollMetrics = () => {
         <MetricsPanel>
           <CloseButton onClick={() => setIsVisible(false)}>×</CloseButton>
           <MetricItem>
-            <MetricLabel>Current Speed:</MetricLabel>
+            <MetricLabel>Scroll Speed:</MetricLabel>
             <MetricValue>{metrics.currentSpeed} px/s</MetricValue>
           </MetricItem>
           <MetricItem>
-            <MetricLabel>Average Speed:</MetricLabel>
-            <MetricValue>{metrics.averageSpeed} px/s</MetricValue>
-          </MetricItem>
-          <MetricItem>
-            <MetricLabel>Total Distance:</MetricLabel>
-            <MetricValue>{metrics.totalDistance} px</MetricValue>
-          </MetricItem>
-          <MetricItem>
-            <MetricLabel>Scroll Position:</MetricLabel>
-            <MetricValue>{metrics.scrollPosition} px</MetricValue>
+            <MetricLabel>Motor Speed:</MetricLabel>
+            <MetricValue>{metrics.motorSpeed}/255</MetricValue>
           </MetricItem>
           <MetricItem>
             <MetricLabel>Direction:</MetricLabel>
@@ -127,6 +140,10 @@ const ScrollMetrics = () => {
             }}>
               {metrics.direction.toUpperCase()}
             </MetricValue>
+          </MetricItem>
+          <MetricItem>
+            <MetricLabel>Total Distance:</MetricLabel>
+            <MetricValue>{metrics.totalDistance} px</MetricValue>
           </MetricItem>
         </MetricsPanel>
       )}

@@ -16,7 +16,6 @@ import StatReshare from './stat-reshare.svg'
 
 import Video from './Video'
 import ScrollMetrics from './components/ScrollMetrics'
-import MotorTest from './components/MotorTest'
 
 function App() {
   const [videos, setVideos] = React.useState([])
@@ -43,7 +42,6 @@ function App() {
   return (
     <AppHolder>
       <ScrollMetrics />
-      <MotorTest />
       <Header>
         <MenuHolder>
           <Logo>

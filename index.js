@@ -159,7 +159,7 @@ const orderReccentFiles = (dir) => {
 	return fs.readdirSync(dir)
 		.filter((file) => fs.lstatSync(path.join(dir, file)).isFile())
 		.map((file) => ({ 
-			url: encodeURIComponent(file), 
+			url: file,
 			filename: file
 		}))
 		.sort((a, b) => {
@@ -177,52 +177,90 @@ app.use('/uploads/', (req, res, next) => {
   res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Range');
+  
+  // Set proper MIME type for video files
+  if (req.path.endsWith('.mp4')) {
+    res.type('video/mp4');
+  }
+  
   next();
 }, express.static(path.resolve(__dirname, './uploads')));
 
 // Configure serial port for Arduino
-const serialPort = new SerialPort({
-  path: '/dev/tty.usbmodem2101',  // You may need to update this path
-  baudRate: 9600,
-  autoOpen: true
-});
+let serialPort = null;
+let portRetryCount = 0;
+const MAX_RETRIES = 5;
 
-// Add error handling for serial port
-serialPort.on('error', (err) => {
-  console.error('Serial port error:', err);
-  // Attempt to reopen the port after a delay
-  setTimeout(() => {
-    if (!serialPort.isOpen) {
-      serialPort.open((err) => {
-        if (err) {
-          console.error('Failed to reopen serial port:', err);
-        } else {
-          console.log('Serial port reopened successfully');
-        }
-      });
+function initializeSerialPort() {
+  try {
+    // If we've tried too many times, stop trying
+    if (portRetryCount >= MAX_RETRIES) {
+      console.error('Max retry attempts reached. Please check if Arduino IDE Serial Monitor is closed.');
+      return;
     }
-  }, 1000);
-});
 
-serialPort.on('open', () => {
-  console.log('Serial port opened successfully');
-});
-
-serialPort.on('close', () => {
-  console.log('Serial port closed');
-  // Attempt to reopen the port after a delay
-  setTimeout(() => {
-    if (!serialPort.isOpen) {
-      serialPort.open((err) => {
-        if (err) {
-          console.error('Failed to reopen serial port:', err);
-        } else {
-          console.log('Serial port reopened successfully');
+    // If there's an existing port, try to close it first
+    if (serialPort) {
+      try {
+        if (serialPort.isOpen) {
+          serialPort.close((err) => {
+            if (err) console.error('Error closing existing port:', err);
+          });
         }
-      });
+      } catch (err) {
+        console.error('Error handling existing port:', err);
+      }
+      serialPort = null;
     }
-  }, 1000);
-});
+
+    // Wait a bit before trying to open the port
+    setTimeout(() => {
+      try {
+        serialPort = new SerialPort({
+          path: '/dev/tty.usbmodem2101',
+          baudRate: 9600,
+          autoOpen: true
+        });
+
+        serialPort.on('error', (err) => {
+          console.error('Serial port error:', err);
+          portRetryCount++;
+          
+          // If the port is busy, wait longer before retrying
+          if (err.message.includes('Resource busy')) {
+            console.log('Port is busy. Please close Arduino IDE Serial Monitor if it\'s open.');
+            setTimeout(initializeSerialPort, 5000); // Wait 5 seconds
+          } else {
+            setTimeout(initializeSerialPort, 2000); // Wait 2 seconds for other errors
+          }
+        });
+
+        serialPort.on('open', () => {
+          console.log('Serial port opened successfully');
+          portRetryCount = 0; // Reset retry count on successful open
+        });
+
+        serialPort.on('close', () => {
+          console.log('Serial port closed');
+          setTimeout(initializeSerialPort, 2000);
+        });
+
+      } catch (err) {
+        console.error('Error creating serial port:', err);
+        portRetryCount++;
+        setTimeout(initializeSerialPort, 2000);
+      }
+    }, 1000); // Wait 1 second before trying to open
+
+  } catch (err) {
+    console.error('Error in initializeSerialPort:', err);
+    portRetryCount++;
+    setTimeout(initializeSerialPort, 2000);
+  }
+}
+
+// Initialize serial port on startup
+initializeSerialPort();
 
 // Function to map scroll metrics to motor values
 function mapScrollToMotor(scrollMetrics) {
@@ -244,10 +282,17 @@ function mapScrollToMotor(scrollMetrics) {
 // Function to send motor commands to Arduino
 async function sendMotorCommand(motorData) {
   console.log('Sending motor command...');
+  // Add newline character to mark end of command
   const command = `${motorData.speed},${motorData.direction}\n`;
   console.log('Command:', command);
   
   try {
+    if (!serialPort) {
+      console.log('Serial port not initialized, attempting to initialize...');
+      initializeSerialPort();
+      return;
+    }
+
     if (!serialPort.isOpen) {
       console.log('Serial port not open, attempting to open...');
       await new Promise((resolve, reject) => {
@@ -262,15 +307,21 @@ async function sendMotorCommand(motorData) {
       });
     }
     
+    // Write the command with a callback to confirm it was sent
     serialPort.write(command, (err) => {
       if (err) {
         console.error('Error writing to serial port:', err);
+        if (err.message.includes('Resource busy')) {
+          console.log('Port is busy. Please close Arduino IDE Serial Monitor if it\'s open.');
+        }
+        initializeSerialPort();
       } else {
         console.log('Command sent successfully');
       }
     });
   } catch (err) {
     console.error('Failed to send motor command:', err);
+    initializeSerialPort();
   }
 }
 
