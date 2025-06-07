@@ -11,7 +11,7 @@ const app = express();
 
 // Enable CORS with specific options
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: '*', // Allow all origins
   methods: ['GET', 'POST', 'OPTIONS'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Range']
@@ -174,7 +174,7 @@ app.use(express.static(path.resolve(__dirname, './client/build')));
 
 // Serve static files with CORS headers
 app.use('/uploads/', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
+  res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Range');
   next();
