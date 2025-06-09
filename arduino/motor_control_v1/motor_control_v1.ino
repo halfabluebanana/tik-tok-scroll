@@ -108,15 +108,15 @@ void loop() {
         // Control motors based on scroll direction with increased speed
         if (scrollDirection == 1) {  // Scrolling down
           Serial.println("Scrolling down - Setting motors");
-          setMotorSpeed(MOTOR1, motorSpeed);
+          setMotorSpeed(MOTOR1, -motorSpeed);
           setMotorSpeed(MOTOR2, -motorSpeed);
-          setMotorSpeed(MOTOR3, motorSpeed);
+          setMotorSpeed(MOTOR3, -motorSpeed);
           setMotorSpeed(MOTOR4, -motorSpeed);
         } else {  // Scrolling up
           Serial.println("Scrolling up - Setting motors");
-          setMotorSpeed(MOTOR1, -motorSpeed);
+          setMotorSpeed(MOTOR1, motorSpeed);
           setMotorSpeed(MOTOR2, motorSpeed);
-          setMotorSpeed(MOTOR3, -motorSpeed);
+          setMotorSpeed(MOTOR3, motorSpeed);
           setMotorSpeed(MOTOR4, motorSpeed);
         }
       } else {

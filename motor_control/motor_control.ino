@@ -1,5 +1,6 @@
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
+// #include <noise.h>
 
 // Create PWM controller instance with default I2C address (0x40)
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
@@ -17,6 +18,14 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
 String inputString = "";    // String to hold incoming data
 boolean stringComplete = false;  // Whether the string is complete
+
+// Add timing variables
+unsigned long lastMotorStartTime = 0;
+const unsigned long MOTOR_DELAY = 200; // 200ms delay between motors
+int currentMotorIndex = 0;
+bool isMotorSequenceActive = false;
+int currentSpeed = 0;
+int currentDirection = 0;
 
 void setup() {
   // Initialize serial communication
@@ -99,25 +108,25 @@ void loop() {
         Serial.print(", Direction: ");
         Serial.println(scrollDirection);
         
-        // Map scroll position (0-255) to motor speed (-100 to 100) with increased range
-        int motorSpeed = map(scrollPosition, 0, 255, -100, 100);
+        // Map scroll position (0-255) to motor speed (0 to 100)
+        currentSpeed = map(scrollPosition, 0, 255, 0, 100);
+        currentDirection = scrollDirection;
         
         Serial.print("Mapped to motor speed: ");
-        Serial.println(motorSpeed);
+        Serial.println(currentSpeed);
         
-        // Control motors based on scroll direction with increased speed
-        if (scrollDirection == 1) {  // Scrolling down
-          Serial.println("Scrolling down - Setting motors");
-          setMotorSpeed(MOTOR1, motorSpeed);
-          setMotorSpeed(MOTOR2, -motorSpeed);
-          setMotorSpeed(MOTOR3, motorSpeed);
-          setMotorSpeed(MOTOR4, -motorSpeed);
-        } else {  // Scrolling up
-          Serial.println("Scrolling up - Setting motors");
-          setMotorSpeed(MOTOR1, -motorSpeed);
-          setMotorSpeed(MOTOR2, motorSpeed);
-          setMotorSpeed(MOTOR3, -motorSpeed);
-          setMotorSpeed(MOTOR4, motorSpeed);
+        // Start the motor sequence
+        isMotorSequenceActive = true;
+        currentMotorIndex = 0;
+        lastMotorStartTime = millis();
+        
+        // Start the first motor immediately
+        if (currentDirection == 1) {  // Scrolling down (counter-clockwise)
+          Serial.println("Starting motor sequence - counter-clockwise");
+          setMotorSpeed(MOTOR1, -currentSpeed);
+        } else {  // Scrolling up (clockwise)
+          Serial.println("Starting motor sequence - clockwise");
+          setMotorSpeed(MOTOR1, currentSpeed);
         }
       } else {
         Serial.println("Error: Invalid position or direction values");
@@ -125,10 +134,35 @@ void loop() {
     } else {
       Serial.println("Error: Invalid command format - missing comma");
     }
-    
     // Clear the string for the next command
     inputString = "";
     stringComplete = false;
+  }
+
+  // Handle motor sequence timing
+  if (isMotorSequenceActive) {
+    unsigned long currentTime = millis();
+    if (currentTime - lastMotorStartTime >= MOTOR_DELAY) {
+      currentMotorIndex++;
+      if (currentMotorIndex < 4) {  // We have 4 motors
+        int motorPin;
+        switch (currentMotorIndex) {
+          case 1: motorPin = MOTOR2; break;
+          case 2: motorPin = MOTOR3; break;
+          case 3: motorPin = MOTOR4; break;
+        }
+        
+        if (currentDirection == 1) {
+          setMotorSpeed(motorPin, -currentSpeed);
+        } else {
+          setMotorSpeed(motorPin, currentSpeed);
+        }
+        
+        lastMotorStartTime = currentTime;
+      } else {
+        isMotorSequenceActive = false;
+      }
+    }
   }
 }
 

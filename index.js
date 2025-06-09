@@ -182,27 +182,45 @@ app.use('/uploads/', (req, res, next) => {
 
 // Configure serial port for Arduino
 const serialPort = new SerialPort({
-  path: '/dev/tty.usbmodem2101',  // You may need to update this path
+  path: '/dev/tty.usbmodem21201',
   baudRate: 9600,
-  autoOpen: true
+  autoOpen: false  // Changed to false so we can handle opening manually
 });
 
 // Add error handling for serial port
 serialPort.on('error', (err) => {
   console.error('Serial port error:', err);
-  // Attempt to reopen the port after a delay
-  setTimeout(() => {
-    if (!serialPort.isOpen) {
-      serialPort.open((err) => {
-        if (err) {
-          console.error('Failed to reopen serial port:', err);
-        } else {
-          console.log('Serial port reopened successfully');
-        }
-      });
-    }
-  }, 1000);
+  console.error('Error details:', {
+    message: err.message,
+    code: err.code,
+    stack: err.stack
+  });
 });
+
+// Try to open the port with retry logic
+function openSerialPort(retries = 3) {
+  console.log('Attempting to open serial port...');
+  serialPort.open((err) => {
+    if (err) {
+      console.error('Error opening serial port:', err);
+      console.error('Error details:', {
+        message: err.message,
+        code: err.code,
+        stack: err.stack
+      });
+      
+      if (retries > 0) {
+        console.log(`Retrying... ${retries} attempts remaining`);
+        setTimeout(() => openSerialPort(retries - 1), 1000);
+      }
+    } else {
+      console.log('Serial port opened successfully');
+    }
+  });
+}
+
+// Initial attempt to open the port
+openSerialPort();
 
 serialPort.on('open', () => {
   console.log('Serial port opened successfully');
@@ -213,13 +231,7 @@ serialPort.on('close', () => {
   // Attempt to reopen the port after a delay
   setTimeout(() => {
     if (!serialPort.isOpen) {
-      serialPort.open((err) => {
-        if (err) {
-          console.error('Failed to reopen serial port:', err);
-        } else {
-          console.log('Serial port reopened successfully');
-        }
-      });
+      openSerialPort();
     }
   }, 1000);
 });

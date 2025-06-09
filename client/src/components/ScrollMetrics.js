@@ -33,7 +33,7 @@ const sendMotorCommand = async (speed, direction) => {
 };
 
 const ScrollMetrics = () => {
-  console.log('ScrollMetrics component mounted');
+  // console.log('ScrollMetrics component mounted');
 
   const [isVisible, setIsVisible] = useState(true);
   const [metrics, setMetrics] = useState({
