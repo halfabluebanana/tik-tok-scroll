@@ -91,13 +91,24 @@ const ScrollMetrics = () => {
     }
 
     try {
+      const scrollWindow = document.getElementById('scroll-window');
+      const scrollHeight = scrollWindow.scrollHeight;
+      const clientHeight = scrollWindow.clientHeight;
+      const maxScroll = scrollHeight - clientHeight;
+      
+      // Calculate scroll position as a percentage of total scrollable area
+      const scrollPercentage = (metrics.scrollPosition / maxScroll) * 100;
+      
+      // Map the percentage to a 0-255 range for motor control
+      const motorSpeed = Math.min(255, Math.max(0, Math.round(scrollPercentage * 2.55)));
+
       const response = await fetch('http://localhost:3001/api/scroll-metrics', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          scrollPosition: Math.min(100, Math.max(0, (metrics.scrollPosition / window.innerHeight) * 100)),
+          scrollPosition: motorSpeed,
           scrollDirection: metrics.direction === 'down' ? 1 : 0
         }),
       });
