@@ -160,7 +160,7 @@ void loop() {
         
         lastMotorStartTime = currentTime;
       } else {
-        isMotorSequenceActive = false;
+        isMotorSequenceActive = false; 
       }
     }
   }

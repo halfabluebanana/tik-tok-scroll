@@ -15,13 +15,97 @@ import StatComment from './stat-comment.svg'
 import StatReshare from './stat-reshare.svg'
 
 import Video from './Video'
-import ScrollMetrics from './components/ScrollMetrics'
-import MotorTest from './components/MotorTest'
 
 function App() {
   const [videos, setVideos] = React.useState([])
 
   const fileRef = useRef(null);
+
+  // Add scroll metrics tracking
+  React.useEffect(() => {
+    let lastScrollTop = 0;
+    let lastScrollTime = Date.now();
+    let totalDistance = 0;
+    let speedSamples = [];
+    let metricsTimeout;
+
+    const handleScroll = (e) => {
+      const currentTime = Date.now();
+      const currentScrollTop = e.target.scrollTop;
+      const currentScrollY = window.scrollY;
+      const timeDiff = currentTime - lastScrollTime;
+      const scrollDiff = currentScrollTop - lastScrollTop;
+      
+      // Log scroll position comparison
+      console.log('\n=== Scroll Event ===');
+      console.log('scrollTop:', currentScrollTop);
+      console.log('scrollY:', currentScrollY);
+      console.log('Time diff:', timeDiff);
+      console.log('Scroll diff:', scrollDiff);
+      
+      // Calculate speed (pixels per second)
+      const speed = Math.abs(scrollDiff / (timeDiff / 1000));
+      
+      // Update metrics
+      totalDistance += Math.abs(scrollDiff);
+      speedSamples.push(speed);
+      if (speedSamples.length > 10) speedSamples.shift();
+      
+      // Calculate average speed
+      const avgSpeed = speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length;
+      
+      // Determine direction
+      const direction = scrollDiff > 0 ? 'down' : 'up';
+      
+      // Update last values
+      lastScrollTop = currentScrollTop;
+      lastScrollTime = currentTime;
+
+      // Clear any existing timeout
+      if (metricsTimeout) {
+        clearTimeout(metricsTimeout);
+      }
+
+      // Set new timeout
+      metricsTimeout = setTimeout(() => {
+        const metrics = {
+          currentSpeed: speed,
+          averageSpeed: avgSpeed,
+          totalDistance: totalDistance,
+          scrollPosition: currentScrollTop,
+          direction: direction
+        };
+
+        // Log metrics before sending
+        console.log('\n=== Sending Metrics ===');
+        console.log('Metrics object:', metrics);
+
+        fetch('http://localhost:3001/api/scroll-metrics', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(metrics)
+        })
+        .then(response => response.json())
+        .then(data => {
+          console.log('Backend response:', data);
+        })
+        .catch(error => {
+          console.error('Error sending metrics:', error);
+        });
+      }, 100); // Debounce for 100ms
+    };
+
+    const scrollWindow = document.getElementById('scroll-window');
+    scrollWindow.addEventListener('scroll', handleScroll);
+    return () => {
+      scrollWindow.removeEventListener('scroll', handleScroll);
+      if (metricsTimeout) {
+        clearTimeout(metricsTimeout);
+      }
+    };
+  }, []);
 
   React.useEffect(() => {
     fetch("http://localhost:3001/api")
@@ -42,8 +126,6 @@ function App() {
 
   return (
     <AppHolder>
-      <ScrollMetrics />
-      <MotorTest />
       <Header>
         <MenuHolder>
           <Logo>

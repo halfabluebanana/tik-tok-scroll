@@ -182,7 +182,7 @@ app.use('/uploads/', (req, res, next) => {
 
 // Configure serial port for Arduino
 const serialPort = new SerialPort({
-  path: '/dev/tty.usbmodem21201',
+  path: '/dev/tty.usbmodem2101',
   baudRate: 9600,
   autoOpen: false  // Changed to false so we can handle opening manually
 });
@@ -238,14 +238,15 @@ serialPort.on('close', () => {
 
 // Function to map scroll metrics to motor values
 function mapScrollToMotor(scrollMetrics) {
+  console.log('\n=== Mapping Scroll to Motor ===');
   // Use the scroll position directly (0-255)
   const motorSpeed = scrollMetrics.scrollPosition;
   
   // Map scroll direction to motor direction
   const motorDirection = scrollMetrics.scrollDirection;
   
-  console.log('Scroll metrics:', scrollMetrics);
-  console.log('Mapped to motor values:', { speed: motorSpeed, direction: motorDirection });
+  console.log('Input scroll metrics:', scrollMetrics);
+  console.log('Output motor values:', { speed: motorSpeed, direction: motorDirection });
   
   return {
     speed: motorSpeed,
@@ -255,9 +256,10 @@ function mapScrollToMotor(scrollMetrics) {
 
 // Function to send motor commands to Arduino
 async function sendMotorCommand(motorData) {
-  console.log('Sending motor command...');
+  console.log('\n=== Sending Motor Command ===');
+  console.log('Motor data:', motorData);
   const command = `${motorData.speed},${motorData.direction}\n`;
-  console.log('Command:', command);
+  console.log('Command to send:', command);
   
   try {
     if (!serialPort.isOpen) {
@@ -268,6 +270,7 @@ async function sendMotorCommand(motorData) {
             console.error('Error opening serial port:', err);
             reject(err);
           } else {
+            console.log('Serial port opened successfully');
             resolve();
           }
         });
@@ -278,7 +281,7 @@ async function sendMotorCommand(motorData) {
       if (err) {
         console.error('Error writing to serial port:', err);
       } else {
-        console.log('Command sent successfully');
+        console.log('Command sent successfully to Arduino');
       }
     });
   } catch (err) {
@@ -289,25 +292,87 @@ async function sendMotorCommand(motorData) {
 // Update the scroll metrics endpoint
 let scrollMetricsTimeout = null;
 
-app.post("/api/scroll-metrics", (req, res) => {
-  const scrollMetrics = req.body;
-  console.log('Received scroll metrics:', scrollMetrics);
+// Add GET endpoint for scroll metrics
+app.get('/api/scroll-metrics', (req, res) => {
+  console.log('\n=== GET /api/scroll-metrics ===');
+  console.log('Current global metrics:', global.scrollMetrics || 'No metrics available');
   
-  // Clear any existing timeout
-  if (scrollMetricsTimeout) {
-    clearTimeout(scrollMetricsTimeout);
+  // If no metrics exist yet, return default values
+  if (!global.scrollMetrics) {
+    console.log('No metrics available, sending default values');
+    res.json({
+      currentSpeed: 0,
+      averageSpeed: 0,
+      totalDistance: 0,
+      scrollPosition: 0,
+      direction: 'none'
+    });
+    return;
   }
 
-  // Debounce the motor command
-  scrollMetricsTimeout = setTimeout(() => {
-    // Map scroll metrics to motor values
-    const motorData = mapScrollToMotor(scrollMetrics);
-    
-    // Send motor commands to Arduino
-    sendMotorCommand(motorData);
-  }, 100); // 100ms debounce
+  console.log('Sending metrics:', global.scrollMetrics);
+  res.json(global.scrollMetrics);
+});
+
+// Update the POST endpoint to store metrics
+app.post('/api/scroll-metrics', (req, res) => {
+  console.log('\n=== POST /api/scroll-metrics ===');
+  console.log('Received metrics:', req.body);
   
-  res.json({ success: true });
+  const { currentSpeed, averageSpeed, totalDistance, scrollPosition, direction } = req.body;
+  
+  // Store metrics globally
+  global.scrollMetrics = {
+    currentSpeed,
+    averageSpeed,
+    totalDistance,
+    scrollPosition,
+    direction
+  };
+
+  console.log('Stored metrics:', global.scrollMetrics);
+
+  // Map scroll direction to motor direction (1 for down, 0 for up)
+  const motorDirection = direction === 'down' ? 1 : 0;
+  
+  // Map speed to motor speed (0-255)
+  let motorSpeed = Math.min(255, Math.max(0, Math.round(currentSpeed)));
+  
+  // Create command in format Arduino expects: "speed,direction\n"
+  const motorCommand = `${motorSpeed},${motorDirection}\n`;
+  
+  console.log('\n=== Sending Motor Command ===');
+  console.log('Scroll direction:', direction);
+  console.log('Motor direction:', motorDirection);
+  console.log('Scroll speed:', currentSpeed);
+  console.log('Motor speed:', motorSpeed);
+  console.log('Command:', motorCommand);
+  
+  if (serialPort && serialPort.isOpen) {
+    serialPort.write(motorCommand, (err) => {
+      if (err) {
+        console.error('Error sending motor command:', err);
+      } else {
+        console.log('Motor command sent successfully to Arduino');
+      }
+    });
+  } else {
+    console.log('Serial port not open, cannot send motor command');
+  }
+
+  res.json({ 
+    status: 'success',
+    motorCommand: motorCommand,
+    metrics: req.body
+  });
+});
+
+// Add serial port event listeners
+serialPort.on('data', (data) => {
+  console.log('\n=== Received Data from Arduino ===');
+  console.log('Raw data:', data.toString());
+  console.log('Data length:', data.length);
+  console.log('Data type:', typeof data);
 });
 
 // Error handling middleware
@@ -316,11 +381,298 @@ app.use((err, req, res, next) => {
 	res.status(500).json({ error: 'Something broke!' });
 });
 
-// All other GET requests not handled before will return our React app
+// Move the scroll-speeds endpoint BEFORE the catch-all route
+app.get('/scroll-speeds', (req, res) => {
+  console.log('\n=== GET /scroll-speeds ===');
+  console.log('Serving scroll-speeds page');
+  
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Scroll Metrics & Motor Controls</title>
+        <style>
+          body {
+            font-family: 'Courier New', monospace;
+            margin: 0;
+            padding: 20px;
+            background: #282828;
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+          }
+          .container {
+            max-width: 800px;
+            width: 100%;
+            margin: 0 auto;
+          }
+          .panel {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+          }
+          .metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+          }
+          .metric-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            transition: background 0.3s;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+          }
+          .metric-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+          }
+          .metric-label {
+            font-weight: bold;
+            color: white;
+          }
+          .metric-value {
+            font-family: 'Courier New', monospace;
+            font-size: 1.1em;
+            color: white;
+          }
+          .controls {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+          }
+          .control-button {
+            background: transparent;
+            color: white;
+            border: 1px solid white;
+            padding: 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-family: 'Courier New', monospace;
+          }
+          .control-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+          }
+          .control-button:active {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(0);
+          }
+          h2 {
+            margin-top: 0;
+            color: white;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 24px;
+            font-family: 'Courier New', monospace;
+          }
+          #debug-panel {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+          }
+          #debug-log {
+            height: 100px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+          }
+          .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+          }
+          .status.connected {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+          }
+          .status.disconnected {
+            background: rgba(255, 0, 0, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 0, 0, 0.3);
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="panel">
+            <h2>Scroll Metrics</h2>
+            <div class="metrics" id="metrics">
+              <div class="metric-item">
+                <span class="metric-label">Current Speed:</span>
+                <span class="metric-value" id="current-speed">0 px/s</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">Average Speed:</span>
+                <span class="metric-value" id="average-speed">0 px/s</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">Total Distance:</span>
+                <span class="metric-value" id="total-distance">0 px</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">Scroll Position:</span>
+                <span class="metric-value" id="scroll-position">0 px</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">Direction:</span>
+                <span class="metric-value" id="direction">NONE</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="panel">
+            <h2>Motor Controls</h2>
+            <div class="controls">
+              <button class="control-button" onclick="sendCommand(255, 1)">Full Speed Forward</button>
+              <button class="control-button" onclick="sendCommand(127, 1)">Half Speed Forward</button>
+              <button class="control-button" onclick="sendCommand(0, 0)">Stop</button>
+              <button class="control-button" onclick="sendCommand(127, 0)">Half Speed Backward</button>
+              <button class="control-button" onclick="sendCommand(255, 0)">Full Speed Backward</button>
+            </div>
+          </div>
+
+          <div class="panel" id="debug-panel">
+            <h2>Connection Status</h2>
+            <div class="status" id="connection-status">Checking connection...</div>
+            <div id="debug-log"></div>
+          </div>
+        </div>
+
+        <script>
+          const debugLog = document.getElementById('debug-log');
+          const connectionStatus = document.getElementById('connection-status');
+          
+          function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            debugLog.innerHTML += \`[\${timestamp}] \${message}<br>\`;
+            debugLog.scrollTop = debugLog.scrollHeight;
+          }
+
+          // Function to send motor commands
+          async function sendCommand(speed, direction) {
+            try {
+              log(\`Sending motor command: speed=\${speed}, direction=\${direction}\`);
+              const response = await fetch('/api/scroll-metrics', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  currentSpeed: speed,
+                  direction: direction === 1 ? 'down' : 'up',
+                  scrollPosition: 0,
+                  totalDistance: 0,
+                  averageSpeed: 0
+                }),
+              });
+              
+              if (!response.ok) {
+                log('Failed to send motor command');
+                connectionStatus.textContent = 'Disconnected';
+                connectionStatus.className = 'status disconnected';
+              } else {
+                log('Motor command sent successfully');
+                connectionStatus.textContent = 'Connected';
+                connectionStatus.className = 'status connected';
+              }
+            } catch (error) {
+              log(\`Error sending motor command: \${error.message}\`);
+              connectionStatus.textContent = 'Disconnected';
+              connectionStatus.className = 'status disconnected';
+            }
+          }
+
+          // Function to update metrics with error handling
+          function updateMetrics(metrics) {
+            try {
+              console.log('Updating metrics:', metrics);
+              document.getElementById('current-speed').textContent = Math.round(metrics.currentSpeed || 0) + ' px/s';
+              document.getElementById('average-speed').textContent = Math.round(metrics.averageSpeed || 0) + ' px/s';
+              document.getElementById('total-distance').textContent = Math.round(metrics.totalDistance || 0) + ' px';
+              document.getElementById('scroll-position').textContent = Math.round(metrics.scrollPosition || 0) + ' px';
+              document.getElementById('direction').textContent = (metrics.direction || 'none').toUpperCase();
+              log('Metrics updated successfully');
+            } catch (error) {
+              console.error('Error updating metrics:', error);
+              log('Error updating metrics: ' + error.message);
+            }
+          }
+
+          // Poll for metrics updates with better error handling
+          setInterval(async () => {
+            try {
+              log('Fetching metrics...');
+              const response = await fetch('/api/scroll-metrics');
+              if (response.ok) {
+                const metrics = await response.json();
+                console.log('Received metrics:', metrics);
+                updateMetrics(metrics);
+                connectionStatus.textContent = 'Connected';
+                connectionStatus.className = 'status connected';
+              } else {
+                throw new Error('Failed to fetch metrics: ' + response.status);
+              }
+            } catch (error) {
+              console.error('Error fetching metrics:', error);
+              log('Error fetching metrics: ' + error.message);
+              connectionStatus.textContent = 'Disconnected';
+              connectionStatus.className = 'status disconnected';
+            }
+          }, 100);
+
+          // Initial connection check
+          fetch('/api/scroll-metrics')
+            .then(response => {
+              if (response.ok) {
+                connectionStatus.textContent = 'Connected';
+                connectionStatus.className = 'status connected';
+                log('Initial connection successful');
+              } else {
+                throw new Error('Failed to connect');
+              }
+            })
+            .catch(error => {
+              connectionStatus.textContent = 'Disconnected';
+              connectionStatus.className = 'status disconnected';
+              log('Initial connection failed: ' + error.message);
+            });
+        </script>
+      </body>
+    </html>
+  `);
+});
+
+// Move the catch-all route to the end
 app.get('*', (req, res) => {
-	res.sendFile(path.resolve(__dirname, './client/build', 'index.html'));
+  console.log('\n=== Catch-all route ===');
+  console.log('Requested URL:', req.url);
+  res.sendFile(path.resolve(__dirname, './client/build', 'index.html'));
 });
 
 app.listen(PORT, '0.0.0.0', () => {
 	console.log(`Server listening on http://0.0.0.0:${PORT}`);
 });
+
