@@ -35,11 +35,11 @@ const bool USE_WEBSOCKET = true;  // Change to false for Serial modeoller
 const bool USE_WEBSOCKET = true;  // Change to false for Serial mode
 
 // WiFi Configuration - Only needed if USE_WEBSOCKET is true
-const char* ssid = "YOUR_WIFI_SSID";        // Replace with your WiFi network name
-const char* password = "YOUR_WIFI_PASSWORD"; // Replace with your WiFi password
+const char* ssid = "MIFI-70F9";        // Replace with your WiFi network name
+const char* password = "12345678"; // Replace with your WiFi password
 
 // Node.js Server Configuration - Only needed if USE_WEBSOCKET is true
-const char* websocket_server = "192.168.1.100";  // Replace with your computer's IP address
+const char* websocket_server = "192.168.0.199";  // Replace with your computer's IP address
 const int websocket_port = 3001;                  // Should match your Node.js server port
 const char* websocket_path = "/esp32";            // WebSocket endpoint path
 
@@ -47,7 +47,7 @@ const char* websocket_path = "/esp32";            // WebSocket endpoint path
 const int serial_baud = 9600;                     // Must match Node.js server serial settings
 
 // ESP-NOW Configuration
-#define MAX_SLAVES 6           // Maximum number of slave ESP32s we can control
+#define MAX_SLAVES            // Maximum number of slave ESP32s we can control
 #define ESPNOW_CHANNEL 1       // ESP-NOW communication channel (1-14)
 
 /*
@@ -63,12 +63,15 @@ const int serial_baud = 9600;                     // Must match Node.js server s
  * In code: {0x24, 0x6F, 0x28, 0xAE, 0xC4, 0x40}
  */
 uint8_t slave_macs[MAX_SLAVES][6] = {
-  {0x24, 0x6F, 0x28, 0xAE, 0xC4, 0x40},  // ESP32_1 - REPLACE WITH REAL MAC!
-  {0x24, 0x6F, 0x28, 0xAE, 0xC4, 0x41},  // ESP32_2 - REPLACE WITH REAL MAC!
-  {0x24, 0x6F, 0x28, 0xAE, 0xC4, 0x42},  // ESP32_3 - REPLACE WITH REAL MAC!
-  {0x24, 0x6F, 0x28, 0xAE, 0xC4, 0x43},  // ESP32_4 - REPLACE WITH REAL MAC!
-  {0x24, 0x6F, 0x28, 0xAE, 0xC4, 0x44},  // ESP32_5 - REPLACE WITH REAL MAC!
-  {0x24, 0x6F, 0x28, 0xAE, 0xC4, 0x45}   // ESP32_6 - REPLACE WITH REAL MAC!
+  //{d4:8c:49:f8:40:6c}, // ESP32_MASTER
+  {F0:24:f9:04:01:58},  // ESP32_1
+  {f0:24:f9:f5:66:70},  // ESP32_2 
+  {d4:8c:49:f8:40:d0},  // ESP32_3 
+  {d4:8c:49:f8:40:6c},  // ESP32_4 
+  {d4:8c:49:f8:40:d0},  // ESP32_5 
+  {84:0d:8e:e6:69:7c}   // ESP32_6
+  // {0x24, 0x6F, 0x28, 0xAE, 0xC4, 0x45}   // ESP32_7 EDIT THIS 
+  // {0x24, 0x6F, 0x28, 0xAE, 0xC4, 0x45}   // ESP32_8 EDIT THIS
 };
 
 // ==================== DATA STRUCTURES ====================
