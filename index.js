@@ -332,37 +332,33 @@ app.post('/api/scroll-metrics', (req, res) => {
 
   console.log('Stored metrics:', global.scrollMetrics);
 
-  // Map scroll direction to motor direction (1 for down, 0 for up)
-  const motorDirection = direction === 'down' ? 1 : 0;
+  // Map scroll direction to servo angle (0-180)
+  const servoAngle = Math.min(180, Math.max(0, Math.round(scrollPosition * (180/255))));
   
-  // Map speed to motor speed (0-255)
-  let motorSpeed = Math.min(255, Math.max(0, Math.round(currentSpeed)));
+  // Create command in format Arduino expects: "angle,direction\n"
+  const servoCommand = `${servoAngle},${direction === 'down' ? 1 : 0}\n`;
   
-  // Create command in format Arduino expects: "speed,direction\n"
-  const motorCommand = `${motorSpeed},${motorDirection}\n`;
-  
-  console.log('\n=== Sending Motor Command ===');
+  console.log('\n=== Sending Servo Command ===');
   console.log('Scroll direction:', direction);
-  console.log('Motor direction:', motorDirection);
-  console.log('Scroll speed:', currentSpeed);
-  console.log('Motor speed:', motorSpeed);
-  console.log('Command:', motorCommand);
+  console.log('Scroll position:', scrollPosition);
+  console.log('Servo angle:', servoAngle);
+  console.log('Command:', servoCommand);
   
   if (serialPort && serialPort.isOpen) {
-    serialPort.write(motorCommand, (err) => {
+    serialPort.write(servoCommand, (err) => {
       if (err) {
-        console.error('Error sending motor command:', err);
+        console.error('Error sending servo command:', err);
       } else {
-        console.log('Motor command sent successfully to Arduino');
+        console.log('Servo command sent successfully to Arduino');
       }
     });
   } else {
-    console.log('Serial port not open, cannot send motor command');
+    console.log('Serial port not open, cannot send servo command');
   }
 
   res.json({ 
     status: 'success',
-    motorCommand: motorCommand,
+    servoCommand: servoCommand,
     metrics: req.body
   });
 });
@@ -675,4 +671,3 @@ app.get('*', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
 	console.log(`Server listening on http://0.0.0.0:${PORT}`);
 });
-
