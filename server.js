@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 3001;
 // Configuration - Switch between serial and WebSocket modes
 const CONFIG = {
   useWebSocket: false,  // Set to false to use serial communication
-  serialPort: '/dev/tty.wchusbserial210',
+  serialPort: '/dev/tty.wchusbserial110',
   baudRate: 9600
 };
 
@@ -118,7 +118,25 @@ app.post('/api/scroll-metrics', async (req, res) => {
 
   // Send data to devices through the appropriate handler
   try {
-    await communicationHandler.sendScrollData(latestMetrics);
+    const transformedData = {
+      type: 'scroll_data',
+      deviceId: 0,  // Broadcast to all devices
+      angle: Math.min(180, Math.max(0, Math.round(latestMetrics.scrollPosition * (180/255)))),
+      direction: latestMetrics.direction === 'down' ? 1 : 0,
+      speed: Math.min(255, Math.max(0, Math.round(latestMetrics.currentSpeed / 10))),
+      interval: 100,  // Default interval between animations
+      delay_offset: 0,  // No delay for broadcast
+      timestamp: Date.now(),
+      containerMetrics: {
+        currentContainer: latestMetrics.containerMetrics.currentContainer || '',
+        timeSpent: latestMetrics.containerMetrics.timeSpent || 0,
+        timeBetween: latestMetrics.containerMetrics.timeBetween || 0,
+        containerIndex: latestMetrics.containerMetrics.containerIndex || 0,
+        totalContainers: latestMetrics.containerMetrics.totalContainers || 0
+      }
+    };
+
+    await communicationHandler.sendScrollData(transformedData);
     
     res.json({ 
       status: 'success',
