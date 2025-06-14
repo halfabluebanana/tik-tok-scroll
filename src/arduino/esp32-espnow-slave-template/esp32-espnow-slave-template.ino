@@ -7,6 +7,8 @@
 
 #include <esp_now.h>             // ESP-NOW protocol for receiving messages
 #include <WiFi.h>                // Required for ESP-NOW (but we don't connect to WiFi)
+#include <Servo.h>                // For servo control
+#include <ArduinoJson.h>          // For JSON serialization
 
 // Add any libraries you need for your project:
 // #include <Servo.h>              // For servo motors
@@ -22,13 +24,17 @@
 
 // FULL VERSION (default)
 typedef struct {
-  int deviceId;              // Target device: 0=all, 1-6=specific device
-  int angle;                 // Servo angle: 0-180 degrees (optional - you can ignore this)
+  int deviceId;              // Target device: 0=broadcast to all, 1-6=specific device
+  int angle;                 // Servo angle: 0-180 degrees
   int direction;             // Direction: 0=up/reverse, 1=down/forward  
-  int speed;                 // Animation speed: 0-255 (optional - you can ignore this)
-  unsigned long interval;    // KEY: Timing between animations (milliseconds)
-  unsigned long delay_offset; // KEY: Device-specific timing offset (milliseconds)
+  int speed;                 // Animation speed: 0-255
+  unsigned long interval;    // Timing between animations (milliseconds)
+  unsigned long delay_offset; // Device-specific timing offset (milliseconds)
   unsigned long timestamp;   // When command was created (for debugging)
+  // Container metrics
+  char currentContainer[32]; // Current container ID
+  unsigned long timeSpent;   // Time spent in current container (ms)
+  unsigned long timeBetween; // Time between container changes (ms)
 } esp_now_message_t;
 
 // SIMPLE TIMING-ONLY VERSION (commented out)
@@ -48,25 +54,37 @@ typedef struct {
 
 #define MY_DEVICE_ID 1           // This device's ID (1-6) - CHANGE THIS for each slave!
 #define ESPNOW_CHANNEL 1         // Must match master (1-14)
+#define SERVO_PIN 13             // GPIO pin for servo control
 
 // ==================== GLOBAL VARIABLES ====================
-
 
 // int interval = 1000;          // Default interval for animations
 // other global variables
 
+// Servo control
+Servo servo;
+int currentAngle = 90;
+int targetAngle = 90;
+unsigned long lastMoveTime = 0;
 
 // ==================== ESP-NOW GLOBALS (DON'T MODIFY) ====================
 // These variables handle ESP-NOW communication - don't change these!
 
-esp_now_message_t lastReceivedMessage = {0, 90, 0, 100, 1000, 0, 0}; // Default safe values
+esp_now_message_t lastReceivedMessage = {
+    .deviceId = 0,
+    .angle = 90,
+    .direction = 1,
+    .speed = 100,
+    .interval = 100,
+    .delay_offset = 0,
+    .timestamp = 0,
+    .currentContainer = "",
+    .timeSpent = 0,
+    .timeBetween = 0
+}; // Default safe values
 bool hasReceivedMessage = false;        // True after first message received
 unsigned long lastMessageTime = 0;     // When we last received a message
 const unsigned long CONNECTION_TIMEOUT = 10000; // 10 seconds without message = disconnected
-
-
-
-
 
 // ==================== SETUP ====================
 
@@ -103,10 +121,9 @@ void setup() {
   
   // ==================== OTHER SETUP CODE ====================
   
-  // myServo.attach(9);              // Attach servo to pin 9
-  // myServo.write(90);              // Start at center position
-  
-    
+  // Initialize servo
+  servo.attach(SERVO_PIN);
+  servo.write(currentAngle);
   
   Serial.println("\n" + String("=").repeat(50));
   Serial.println("Slave ESP32 ready!");
@@ -136,11 +153,44 @@ void loop() {
   
   // ==================== OTHER LOOP CODE ====================
   
- 
+  // Check if we need to move the servo
+  if (currentAngle != targetAngle) {
+    unsigned long now = millis();
+    if (now - lastMoveTime >= lastReceivedMessage.interval) {
+      // Calculate step size based on speed
+      int step = map(lastReceivedMessage.speed, 0, 255, 1, 10);
+      
+      // Move towards target angle
+      if (currentAngle < targetAngle) {
+        currentAngle = min(currentAngle + step, targetAngle);
+      } else {
+        currentAngle = max(currentAngle - step, targetAngle);
+      }
+      
+      servo.write(currentAngle);
+      lastMoveTime = now;
 
+      // Log movement
+      if (currentAngle == targetAngle) {
+        char message[100];
+        snprintf(message, sizeof(message), "Servo reached target angle: %d", currentAngle);
+        sendLog("info", message);
+      }
+    }
+  }
 
-
-
+  // Print container metrics every 5 seconds
+  static unsigned long lastPrintTime = 0;
+  if (millis() - lastPrintTime >= 5000) {
+    char message[200];
+    snprintf(message, sizeof(message), 
+            "Container: %s, Time spent: %lu ms, Time between: %lu ms",
+            lastReceivedMessage.currentContainer,
+            lastReceivedMessage.timeSpent,
+            lastReceivedMessage.timeBetween);
+    sendLog("info", message);
+    lastPrintTime = millis();
+  }
   
   // Small delay to prevent overwhelming the CPU (keep this!)
   delay(10);
@@ -190,15 +240,14 @@ void onDataReceived(const uint8_t *mac, const uint8_t *data, int len) {
   // This is where you add code to respond to the received message!
   // The message data is available in the 'message' variable.
  
+  // Update target angle
+  targetAngle = message->angle;
 
-  
+  // Apply delay offset
+  if (message->delay_offset > 0) {
+    delay(message->delay_offset);
+  }
 
-
-
-
-
-
-  
   Serial.println("[ESP-NOW] Message processed successfully");
 }
 
@@ -209,3 +258,16 @@ void onDataReceived(const uint8_t *mac, const uint8_t *data, int len) {
 // void startAnimation() {
 //   // Your animation start code
 // }
+
+// Send log to server
+void sendLog(const char* type, const char* message) {
+    StaticJsonDocument<256> doc;
+    doc["type"] = type;
+    doc["source"] = "slave";
+    doc["deviceId"] = MY_DEVICE_ID;
+    doc["message"] = message;
+    doc["timestamp"] = millis();
+    
+    serializeJson(doc, Serial);
+    Serial.println();
+}

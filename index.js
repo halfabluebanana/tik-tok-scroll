@@ -3,11 +3,17 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require("path");
 const fs = require("fs");
+const http = require('http');
+// const WebSocketHandler = require('./src/handlers/websocket-handler');
 const { SerialPort } = require('serialport');
 
 const PORT = process.env.PORT || 3001;
 
 const app = express();
+const server = http.createServer(app);
+
+// Initialize WebSocket handler (commented out for now)
+// const wsHandler = new WebSocketHandler(server);
 
 // Enable CORS with specific options
 app.use(cors({
@@ -180,21 +186,16 @@ app.use('/uploads/', (req, res, next) => {
   next();
 }, express.static(path.resolve(__dirname, './uploads')));
 
-// Configure serial port for Arduino
+// Configure serial port for ESP32
 const serialPort = new SerialPort({
   path: '/dev/tty.usbmodem2101',
-  baudRate: 9600,
-  autoOpen: false  // Changed to false so we can handle opening manually
+  baudRate: 115200,  // Updated to match ESP32 baud rate
+  autoOpen: false
 });
 
 // Add error handling for serial port
 serialPort.on('error', (err) => {
   console.error('Serial port error:', err);
-  console.error('Error details:', {
-    message: err.message,
-    code: err.code,
-    stack: err.stack
-  });
 });
 
 // Try to open the port with retry logic
@@ -203,12 +204,6 @@ function openSerialPort(retries = 3) {
   serialPort.open((err) => {
     if (err) {
       console.error('Error opening serial port:', err);
-      console.error('Error details:', {
-        message: err.message,
-        code: err.code,
-        stack: err.stack
-      });
-      
       if (retries > 0) {
         console.log(`Retrying... ${retries} attempts remaining`);
         setTimeout(() => openSerialPort(retries - 1), 1000);
@@ -222,153 +217,58 @@ function openSerialPort(retries = 3) {
 // Initial attempt to open the port
 openSerialPort();
 
-serialPort.on('open', () => {
-  console.log('Serial port opened successfully');
-});
-
-serialPort.on('close', () => {
-  console.log('Serial port closed');
-  // Attempt to reopen the port after a delay
-  setTimeout(() => {
-    if (!serialPort.isOpen) {
-      openSerialPort();
-    }
-  }, 1000);
-});
-
-// Function to map scroll metrics to motor values
-function mapScrollToMotor(scrollMetrics) {
-  console.log('\n=== Mapping Scroll to Motor ===');
-  // Use the scroll position directly (0-255)
-  const motorSpeed = scrollMetrics.scrollPosition;
-  
-  // Map scroll direction to motor direction
-  const motorDirection = scrollMetrics.scrollDirection;
-  
-  console.log('Input scroll metrics:', scrollMetrics);
-  console.log('Output motor values:', { speed: motorSpeed, direction: motorDirection });
-  
-  return {
-    speed: motorSpeed,
-    direction: motorDirection
-  };
-}
-
-// Function to send motor commands to Arduino
-async function sendMotorCommand(motorData) {
-  console.log('\n=== Sending Motor Command ===');
-  console.log('Motor data:', motorData);
-  const command = `${motorData.speed},${motorData.direction}\n`;
-  console.log('Command to send:', command);
-  
-  try {
-    if (!serialPort.isOpen) {
-      console.log('Serial port not open, attempting to open...');
-      await new Promise((resolve, reject) => {
-        serialPort.open((err) => {
-          if (err) {
-            console.error('Error opening serial port:', err);
-            reject(err);
-          } else {
-            console.log('Serial port opened successfully');
-            resolve();
-          }
-        });
-      });
-    }
-    
-    serialPort.write(command, (err) => {
-      if (err) {
-        console.error('Error writing to serial port:', err);
-      } else {
-        console.log('Command sent successfully to Arduino');
-      }
-    });
-  } catch (err) {
-    console.error('Failed to send motor command:', err);
+// Store the latest metrics
+let latestMetrics = {
+  currentSpeed: 0,
+  averageSpeed: 0,
+  totalDistance: 0,
+  scrollPosition: 0,
+  direction: 'none',
+  containerMetrics: {
+    currentContainer: null,
+    timeSpent: 0,
+    timeBetween: 0
   }
-}
+};
 
-// Update the scroll metrics endpoint
-let scrollMetricsTimeout = null;
-
-// Add GET endpoint for scroll metrics
-app.get('/api/scroll-metrics', (req, res) => {
-  console.log('\n=== GET /api/scroll-metrics ===');
-  console.log('Current global metrics:', global.scrollMetrics || 'No metrics available');
-  
-  // If no metrics exist yet, return default values
-  if (!global.scrollMetrics) {
-    console.log('No metrics available, sending default values');
-    res.json({
-      currentSpeed: 0,
-      averageSpeed: 0,
-      totalDistance: 0,
-      scrollPosition: 0,
-      direction: 'none'
-    });
-    return;
-  }
-
-  console.log('Sending metrics:', global.scrollMetrics);
-  res.json(global.scrollMetrics);
-});
-
-// Update the POST endpoint to store metrics
+// POST endpoint for scroll metrics
 app.post('/api/scroll-metrics', (req, res) => {
   console.log('\n=== POST /api/scroll-metrics ===');
   console.log('Received metrics:', req.body);
   
-  const { currentSpeed, averageSpeed, totalDistance, scrollPosition, direction } = req.body;
-  
-  // Store metrics globally
-  global.scrollMetrics = {
-    currentSpeed,
-    averageSpeed,
-    totalDistance,
-    scrollPosition,
-    direction
+  // Update latest metrics
+  latestMetrics = {
+    ...req.body,
+    containerMetrics: req.body.containerMetrics || latestMetrics.containerMetrics
   };
-
-  console.log('Stored metrics:', global.scrollMetrics);
-
-  // Map scroll direction to servo angle (0-180)
-  const servoAngle = Math.min(180, Math.max(0, Math.round(scrollPosition * (180/255))));
   
-  // Create command in format Arduino expects: "angle,direction\n"
-  const servoCommand = `${servoAngle},${direction === 'down' ? 1 : 0}\n`;
-  
-  console.log('\n=== Sending Servo Command ===');
-  console.log('Scroll direction:', direction);
-  console.log('Scroll position:', scrollPosition);
-  console.log('Servo angle:', servoAngle);
-  console.log('Command:', servoCommand);
-  
+  // Send to ESP32 via serial
   if (serialPort && serialPort.isOpen) {
-    serialPort.write(servoCommand, (err) => {
+    const data = JSON.stringify(latestMetrics) + '\n';
+    console.log('Sending to ESP32:', data);
+    serialPort.write(data, (err) => {
       if (err) {
-        console.error('Error sending servo command:', err);
-      } else {
-        console.log('Servo command sent successfully to Arduino');
+        console.error('Error writing to serial port:', err);
       }
     });
   } else {
-    console.log('Serial port not open, cannot send servo command');
+    console.log('Serial port not open, skipping ESP32 send');
   }
-
-  res.json({ 
-    status: 'success',
-    servoCommand: servoCommand,
-    metrics: req.body
-  });
+  
+  res.json({ success: true });
 });
 
-// Add serial port event listeners
+// GET endpoint for scroll metrics
+app.get('/api/scroll-metrics', (req, res) => {
+  console.log('\n=== GET /api/scroll-metrics ===');
+  console.log('Returning latest metrics:', latestMetrics);
+  res.json(latestMetrics);
+});
+
+// Add serial port data listener
 serialPort.on('data', (data) => {
-  console.log('\n=== Received Data from Arduino ===');
+  console.log('\n=== Received Data from ESP32 ===');
   console.log('Raw data:', data.toString());
-  console.log('Data length:', data.length);
-  console.log('Data type:', typeof data);
 });
 
 // Error handling middleware
@@ -379,9 +279,6 @@ app.use((err, req, res, next) => {
 
 // Move the scroll-speeds endpoint BEFORE the catch-all route
 app.get('/scroll-speeds', (req, res) => {
-  console.log('\n=== GET /scroll-speeds ===');
-  console.log('Serving scroll-speeds page');
-  
   res.send(`
     <!DOCTYPE html>
     <html>
@@ -538,6 +435,24 @@ app.get('/scroll-speeds', (req, res) => {
               </div>
             </div>
           </div>
+
+          <div class="panel">
+            <h2>Container Metrics</h2>
+            <div class="metrics" id="container-metrics">
+              <div class="metric-item">
+                <span class="metric-label">Current Container:</span>
+                <span class="metric-value" id="current-container">None</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">Time in Container:</span>
+                <span class="metric-value" id="time-in-container">0s</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">Time Between Containers:</span>
+                <span class="metric-value" id="time-between">0s</span>
+              </div>
+            </div>
+          </div>
           
           <div class="panel">
             <h2>Motor Controls</h2>
@@ -605,11 +520,22 @@ app.get('/scroll-speeds', (req, res) => {
           function updateMetrics(metrics) {
             try {
               console.log('Updating metrics:', metrics);
+              // Update scroll metrics
               document.getElementById('current-speed').textContent = Math.round(metrics.currentSpeed || 0) + ' px/s';
               document.getElementById('average-speed').textContent = Math.round(metrics.averageSpeed || 0) + ' px/s';
               document.getElementById('total-distance').textContent = Math.round(metrics.totalDistance || 0) + ' px';
               document.getElementById('scroll-position').textContent = Math.round(metrics.scrollPosition || 0) + ' px';
               document.getElementById('direction').textContent = (metrics.direction || 'none').toUpperCase();
+
+              // Update container metrics
+              if (metrics.containerMetrics) {
+                document.getElementById('current-container').textContent = metrics.containerMetrics.currentContainer || 'None';
+                document.getElementById('time-in-container').textContent = 
+                  Math.round(metrics.containerMetrics.timeSpent / 1000) + 's';
+                document.getElementById('time-between').textContent = 
+                  Math.round(metrics.containerMetrics.timeBetween / 1000) + 's';
+              }
+
               log('Metrics updated successfully');
             } catch (error) {
               console.error('Error updating metrics:', error);
@@ -668,6 +594,11 @@ app.get('*', (req, res) => {
   res.sendFile(path.resolve(__dirname, './client/build', 'index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-	console.log(`Server listening on http://0.0.0.0:${PORT}`);
+// Start the server
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+  
+  // WebSocket initialization (commented out for now)
+  // const esp32Port = '/dev/tty.usbmodem2101';
+  // wsHandler.connectSerial(esp32Port);
 });

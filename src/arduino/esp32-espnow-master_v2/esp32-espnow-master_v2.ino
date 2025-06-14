@@ -6,7 +6,7 @@
 // ==================== CONFIGURATION SECTION ====================
 
 // Communication Mode Selection
-const bool USE_WEBSOCKET = true;  // Change to false for Serial mode
+const bool USE_WEBSOCKET = false;  // Change to false for Serial mode
 
 // WiFi Configuration
 const char* ssid = "MIFI-70F9";

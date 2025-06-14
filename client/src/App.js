@@ -15,6 +15,8 @@ import StatComment from './stat-comment.svg'
 import StatReshare from './stat-reshare.svg'
 
 import Video from './Video'
+import ScrollMetrics from './ScrollMetrics';
+import ScrollMonitor from './ScrollMonitor';
 
 function App() {
   const [videos, setVideos] = React.useState([])
@@ -125,7 +127,9 @@ function App() {
   };
 
   return (
-    <AppHolder>
+    <AppContainer>
+      <ScrollMonitor />
+      <ScrollMetrics />
       <Header>
         <MenuHolder>
           <Logo>
@@ -191,8 +195,8 @@ function App() {
             </ForYou>
         </FollowingHolder>
       </Header>
-      <VideoScroller id="scroll-window">
-       {videos.map(({ url, channel, description, song, likes, messages, shares }, index) =>
+      <ScrollWindow id="scroll-window">
+        {videos.map(({ url, channel, description, song, likes, messages, shares }, index) =>
           <TikVideo key={url} index={index} url={url} channel={channel} description={description} song={song} likes={likes} messages={messages} shares={shares} />)}
           {/* <TikVideo />
           <TikVideo />
@@ -200,11 +204,11 @@ function App() {
           <TikVideo />
           <TikVideo /> */}
           <Spacer />
-      </VideoScroller>
+      </ScrollWindow>
       <nav className="tiktik-menu">
        
       </nav>
-    </AppHolder>
+    </AppContainer>
   );
 }
 
@@ -349,22 +353,11 @@ const VideoHolder = s.div`
   }
 `
 
-const VideoScroller = s.div`
-  display:flex;
-  position:absolute;
-  top:0;right:0;bottom:0;left:0;
-  overflow-y:scroll;
-  flex-direction:column;
-  align-items:center;
-  padding:18px;
+const ScrollWindow = s.div`
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
   scroll-snap-type: y mandatory;
-	scroll-snap-stop: always;
-  margin-top:158px;
-  scroll-behavior: smooth;
-  @media (max-width: 1024px) {
-    margin-top:0px;
-    padding:0px;
-  }
 `
 
 const Following = s.div`
@@ -504,10 +497,11 @@ const Header = s.div`
   }
 `
 
-const AppHolder = s.div`
-  background:#282828;
-  disply:flex;
-  
-`
+const AppContainer = s.div`
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+`;
 
 export default App;
