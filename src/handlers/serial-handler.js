@@ -78,35 +78,51 @@ class SerialHandler {
     });
   }
 
-  // Send scroll data to ESP32 devices (matches WebSocket handler interface)
-  async sendScrollData(scrollMetrics) {
+  // Transform scroll metrics to ESP32 message format
+  transformToESP32Message(metrics) {
+    return {
+      type: 'scroll_data',
+      deviceId: 0, // Broadcast to all devices
+      angle: Math.min(180, Math.max(0, Math.round(metrics.scrollPosition * (180/255)))),
+      direction: metrics.direction === 'down' ? 1 : 0,
+      speed: Math.min(255, Math.max(0, Math.round(metrics.currentSpeed / 10))), // Scale speed to 0-255
+      interval: 100, // Default interval between animations
+      delay_offset: 0, // No delay for broadcast
+      timestamp: Date.now(),
+      containerMetrics: {
+        currentContainer: metrics.containerMetrics.currentContainer || '',
+        timeSpent: metrics.containerMetrics.timeSpent || 0,
+        timeBetween: metrics.containerMetrics.timeBetween || 0,
+        containerIndex: metrics.containerMetrics.containerIndex || 0,
+        totalContainers: metrics.containerMetrics.totalContainers || 0
+      }
+    };
+  }
+
+  // Send scroll data to ESP32 devices
+  async sendScrollData(metrics) {
     return new Promise((resolve, reject) => {
       console.log('\n=== Sending Scroll Data via Serial ===');
-      console.log('Scroll metrics:', scrollMetrics);
+      console.log('Scroll metrics:', metrics);
 
-      // Map scroll direction to servo angle (0-180)
-      const servoAngle = Math.min(180, Math.max(0, Math.round(scrollMetrics.scrollPosition * (180/255))));
+      // Transform metrics to ESP32 message format
+      const esp32Message = this.transformToESP32Message(metrics);
+      const messageStr = JSON.stringify(esp32Message) + '\n';
       
-      // Create command in format Arduino expects: "angle,direction\n"
-      const servoCommand = `${servoAngle},${scrollMetrics.direction === 'down' ? 1 : 0}\n`;
-      
-      console.log('Scroll direction:', scrollMetrics.direction);
-      console.log('Scroll position:', scrollMetrics.scrollPosition);
-      console.log('Servo angle:', servoAngle);
-      console.log('Command:', servoCommand);
+      console.log('ESP32 message:', esp32Message);
       
       if (this.serialPort && this.serialPort.isOpen) {
-        this.serialPort.write(servoCommand, (err) => {
+        this.serialPort.write(messageStr, (err) => {
           if (err) {
-            console.error('Error sending servo command:', err);
+            console.error('Error sending data:', err);
             reject(err);
           } else {
-            console.log('Servo command sent successfully to Arduino');
-            resolve({ command: servoCommand, status: 'success' });
+            console.log('Data sent successfully to ESP32');
+            resolve({ message: esp32Message, status: 'success' });
           }
         });
       } else {
-        const error = new Error('Serial port not open, cannot send servo command');
+        const error = new Error('Serial port not open, cannot send data');
         console.log(error.message);
         reject(error);
       }
@@ -116,23 +132,20 @@ class SerialHandler {
   // Handle GET request for scroll metrics
   handleGetScrollMetrics(req, res) {
     console.log('\n=== GET /api/scroll-metrics (Serial) ===');
-    console.log('Current global metrics:', global.scrollMetrics || 'No metrics available');
-    
-    // If no metrics exist yet, return default values
-    if (!global.scrollMetrics) {
-      console.log('No metrics available, sending default values');
-      res.json({
-        currentSpeed: 0,
-        averageSpeed: 0,
-        totalDistance: 0,
-        scrollPosition: 0,
-        direction: 'none'
-      });
-      return;
-    }
-
-    console.log('Sending metrics:', global.scrollMetrics);
-    res.json(global.scrollMetrics);
+    res.json({
+      currentSpeed: 0,
+      averageSpeed: 0,
+      totalDistance: 0,
+      scrollPosition: 0,
+      direction: 'none',
+      containerMetrics: {
+        currentContainer: null,
+        timeSpent: 0,
+        timeBetween: 0,
+        containerIndex: 0,
+        totalContainers: 0
+      }
+    });
   }
 
   // Handle POST request for scroll metrics
@@ -140,24 +153,11 @@ class SerialHandler {
     console.log('\n=== POST /api/scroll-metrics (Serial) ===');
     console.log('Received metrics:', req.body);
     
-    const { currentSpeed, averageSpeed, totalDistance, scrollPosition, direction } = req.body;
-    
-    // Store metrics globally
-    global.scrollMetrics = {
-      currentSpeed,
-      averageSpeed,
-      totalDistance,
-      scrollPosition,
-      direction
-    };
-
-    console.log('Stored metrics:', global.scrollMetrics);
-
     try {
-      const result = await this.sendScrollData(global.scrollMetrics);
+      const result = await this.sendScrollData(req.body);
       res.json({ 
         status: 'success',
-        servoCommand: result.command,
+        message: result.message,
         metrics: req.body
       });
     } catch (error) {

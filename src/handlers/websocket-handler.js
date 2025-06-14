@@ -181,8 +181,5 @@ class WebSocketHandler {
     }
 }
 
-// Create the WebSocket handler
-const esp32Handler = new WebSocketHandler();
-
-// Export for use in server.js
-module.exports = esp32Handler;
+// Export the class for use in server.js
+module.exports = WebSocketHandler;

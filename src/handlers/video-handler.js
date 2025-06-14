@@ -60,7 +60,7 @@ class VideoHandler {
     return fs.readdirSync(dir)
       .filter((file) => fs.lstatSync(path.join(dir, file)).isFile())
       .map((file) => ({ 
-        url: encodeURIComponent(file), 
+        url: `/uploads/${encodeURIComponent(file)}`, 
         filename: file
       }))
       .sort((a, b) => {

@@ -23,6 +23,8 @@ const int serial_baud = 9600;
 // ESP-NOW Configuration
 #define MAX_SLAVES 6
 #define ESPNOW_CHANNEL 1
+#define BROADCAST_INTERVAL 100  // ms between broadcasts
+#define CASCADE_DELAY 50       // ms delay between each slave
 
 // MAC addresses of slave ESP32s
 uint8_t slave_macs[MAX_SLAVES][6] = {
@@ -64,6 +66,18 @@ String repeatString(const char* str, int times) {
     result += str;
   }
   return result;
+}
+
+// Send log to server
+void sendLog(const char* type, const char* message) {
+  JSONVar doc;
+  doc["type"] = "log";
+  doc["source"] = "master";
+  doc["message"] = message;
+  doc["timestamp"] = millis();
+  
+  String jsonString = JSON.stringify(doc);
+  Serial.println(jsonString);
 }
 
 void setup() {
@@ -149,11 +163,11 @@ void setupESPNOW() {
   WiFi.mode(WIFI_AP_STA);
   
   if (esp_now_init() != ESP_OK) {
-    Serial.println("ERROR: ESP-NOW initialization failed!");
+    sendLog("error", "Error initializing ESP-NOW");
     return;
   }
   
-  esp_now_register_send_cb(onDataSent);
+  esp_now_register_send_cb(OnDataSent);
   
   for (int i = 0; i < MAX_SLAVES; i++) {
     esp_now_peer_info_t peerInfo;
@@ -162,13 +176,19 @@ void setupESPNOW() {
     peerInfo.encrypt = false;
     
     if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-      Serial.println("Failed to add ESP32_" + String(i + 1));
+      char message[50];
+      snprintf(message, sizeof(message), "Failed to add peer %d", i + 1);
+      sendLog("error", message);
+      return;
     } else {
       Serial.print("Added ESP32_" + String(i + 1) + " (MAC: ");
       printMACAddress(slave_macs[i]);
       Serial.println(")");
     }
   }
+  
+  sendLog("info", "ESP-NOW initialized");
+  Serial.println(repeatString("=", 50));
 }
 
 void setupWebSocket() {
@@ -272,17 +292,90 @@ void handleSerialInput() {
   }
   
   if (serialStringComplete) {
-    int commaIndex = serialInputString.indexOf(',');
-    if (commaIndex != -1) {
-      String angleStr = serialInputString.substring(0, commaIndex);
-      String dirStr = serialInputString.substring(commaIndex + 1);
-      
-      int angle = angleStr.toInt();
-      int direction = dirStr.toInt();
-      
-      if (angle >= 0 && angle <= 180 && (direction == 0 || direction == 1)) {
-        broadcastTimingToSlaves(0, angle, direction, 100, 1000, 100);
-      }
+    Serial.println("\n[Serial] Received command: " + serialInputString);
+    
+    // Parse JSON input
+    JSONVar input = JSON.parse(serialInputString);
+    
+    // Check if parsing was successful
+    if (JSON.typeof(input) == "undefined") {
+      Serial.println("[Serial] Error: Invalid JSON format");
+      Serial.println("Expected format: {\"deviceId\":0,\"angle\":90,\"direction\":1,\"speed\":100,\"interval\":1000,\"delay_offset\":0}");
+      serialInputString = "";
+      serialStringComplete = false;
+      return;
+    }
+    
+    // Extract and validate deviceId
+    int deviceId = input.hasOwnProperty("deviceId") ? (int)input["deviceId"] : 0;
+    if (deviceId < 0 || deviceId > MAX_SLAVES) {
+      Serial.println("[Serial] Error: Invalid deviceId (must be 0-" + String(MAX_SLAVES) + ")");
+      serialInputString = "";
+      serialStringComplete = false;
+      return;
+    }
+    
+    // Extract and validate angle
+    int angle = input.hasOwnProperty("angle") ? (int)input["angle"] : 90;
+    if (angle < 0 || angle > 180) {
+      Serial.println("[Serial] Error: Invalid angle (must be 0-180)");
+      serialInputString = "";
+      serialStringComplete = false;
+      return;
+    }
+    
+    // Extract and validate direction
+    int direction = input.hasOwnProperty("direction") ? (int)input["direction"] : 0;
+    if (direction != 0 && direction != 1) {
+      Serial.println("[Serial] Error: Invalid direction (must be 0 or 1)");
+      serialInputString = "";
+      serialStringComplete = false;
+      return;
+    }
+    
+    // Extract and validate speed
+    int speed = input.hasOwnProperty("speed") ? (int)input["speed"] : 100;
+    if (speed < 0 || speed > 255) {
+      Serial.println("[Serial] Error: Invalid speed (must be 0-255)");
+      serialInputString = "";
+      serialStringComplete = false;
+      return;
+    }
+    
+    // Extract and validate interval
+    unsigned long interval = input.hasOwnProperty("interval") ? (unsigned long)input["interval"] : 1000;
+    if (interval < 10 || interval > 10000) {
+      Serial.println("[Serial] Error: Invalid interval (must be 10-10000ms)");
+      serialInputString = "";
+      serialStringComplete = false;
+      return;
+    }
+    
+    // Extract and validate delay_offset
+    unsigned long delay_offset = input.hasOwnProperty("delay_offset") ? (unsigned long)input["delay_offset"] : 0;
+    if (delay_offset > 5000) {
+      Serial.println("[Serial] Error: Invalid delay_offset (must be 0-5000ms)");
+      serialInputString = "";
+      serialStringComplete = false;
+      return;
+    }
+    
+    // All validations passed, print command details
+    Serial.println("[Serial] Valid command:");
+    Serial.println("   Device ID: " + String(deviceId) + (deviceId == 0 ? " (broadcast)" : ""));
+    Serial.println("   Angle: " + String(angle) + "°");
+    Serial.println("   Direction: " + String(direction ? "forward" : "reverse"));
+    Serial.println("   Speed: " + String(speed));
+    Serial.println("   Interval: " + String(interval) + "ms");
+    Serial.println("   Delay offset: " + String(delay_offset) + "ms");
+    
+    // Send command to slaves
+    if (deviceId == 0) {
+      Serial.println("[Serial] Broadcasting to all slaves...");
+      broadcastTimingToSlaves(deviceId, angle, direction, speed, interval, delay_offset);
+    } else {
+      Serial.println("[Serial] Sending to device " + String(deviceId) + "...");
+      sendTimingToDevice(deviceId, angle, direction, speed, interval, delay_offset);
     }
     
     serialInputString = "";
@@ -321,20 +414,15 @@ void sendTimingToDevice(int deviceId, int angle, int direction, int speed, unsig
   esp_err_t result = esp_now_send(slave_macs[deviceId - 1], (uint8_t*)&message, sizeof(message));
 }
 
-void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  String deviceName = "Unknown";
-  for (int i = 0; i < MAX_SLAVES; i++) {
-    if (memcmp(mac_addr, slave_macs[i], 6) == 0) {
-      deviceName = "ESP32_" + String(i + 1);
-      break;
-    }
-  }
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  char macStr[18];
+  snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
   
-  if (status == ESP_NOW_SEND_SUCCESS) {
-    Serial.println("[ESP-NOW] Delivery confirmed to " + deviceName);
-  } else {
-    Serial.println("[ESP-NOW] Delivery failed to " + deviceName);
-  }
+  char message[100];
+  snprintf(message, sizeof(message), "Sent to %s: %s", 
+           macStr, status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
+  sendLog("info", message);
 }
 
 void printMACAddress(uint8_t* mac) {

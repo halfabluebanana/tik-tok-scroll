@@ -21,6 +21,8 @@ typedef struct {
     char currentContainer[32]; // Current container ID
     unsigned long timeSpent;   // Time spent in current container (ms)
     unsigned long timeBetween; // Time between container changes (ms)
+    int containerIndex;        // Absolute position (1-based)
+    int totalContainers;       // Total number of containers
 } esp_now_message_t;
 
 // Slave MAC addresses
@@ -44,7 +46,9 @@ esp_now_message_t lastMessage = {
     .timestamp = 0,
     .currentContainer = "",
     .timeSpent = 0,
-    .timeBetween = 0
+    .timeBetween = 0,
+    .containerIndex = 0,
+    .totalContainers = 0
 };
 
 // Helper function to repeat a string
@@ -136,12 +140,16 @@ void processSerialInput(String jsonStr) {
             }
             lastMessage.timeSpent = metrics["timeSpent"] | 0;
             lastMessage.timeBetween = metrics["timeBetween"] | 0;
+            lastMessage.containerIndex = metrics["containerIndex"] | 0;
+            lastMessage.totalContainers = metrics["totalContainers"] | 0;
         }
 
         // Log received data
-        char message[100];
-        snprintf(message, sizeof(message), "Received scroll data: angle=%d, dir=%d, speed=%d",
-                lastMessage.angle, lastMessage.direction, lastMessage.speed);
+        char message[200];
+        snprintf(message, sizeof(message), 
+                "Received scroll data: angle=%d, dir=%d, speed=%d, container=%s, index=%d/%d",
+                lastMessage.angle, lastMessage.direction, lastMessage.speed,
+                lastMessage.currentContainer, lastMessage.containerIndex, lastMessage.totalContainers);
         sendLog("info", message);
 
         // Broadcast to all slaves with cascading delay
@@ -158,10 +166,12 @@ void broadcastToAllSlaves() {
         esp_err_t result = esp_now_send(slave_macs[i], (uint8_t*)&message, sizeof(message));
         
         if (result == ESP_OK) {
-            char logMessage[100];
+            char logMessage[200];
             snprintf(logMessage, sizeof(logMessage), 
-                    "Sent to slave %d: angle=%d, dir=%d, speed=%d, delay=%lu",
-                    i + 1, message.angle, message.direction, message.speed, message.delay_offset);
+                    "Sent to slave %d: angle=%d, dir=%d, speed=%d, container=%s, index=%d/%d, delay=%lu",
+                    i + 1, message.angle, message.direction, message.speed,
+                    message.currentContainer, message.containerIndex, message.totalContainers,
+                    message.delay_offset);
             sendLog("info", logMessage);
         } else {
             char logMessage[50];

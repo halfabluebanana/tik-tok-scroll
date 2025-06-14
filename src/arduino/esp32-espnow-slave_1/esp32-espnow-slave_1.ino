@@ -8,12 +8,13 @@
 #include <esp_now.h>             // ESP-NOW protocol for receiving messages
 #include <WiFi.h>                // Required for ESP-NOW (but we don't connect to WiFi)
 #include <ESP32Servo.h>          // ESP32-specific servo library
+#include <Arduino_JSON.h>
 
 // ==================== ESP-NOW MESSAGE STRUCTURE ====================
 // This matches the structure in master_v2
 
 typedef struct {
-  int deviceId;              // Target device: 0=all, 1-6=specific device
+  int deviceId;              // Target device: 0=broadcast to all, 1-6=specific device
   int angle;                 // Servo angle: 0-180 degrees
   int direction;             // Direction: 0=up/reverse, 1=down/forward  
   int speed;                 // Animation speed: 0-255
@@ -24,9 +25,9 @@ typedef struct {
 
 // ==================== CONFIGURATION SECTION ====================
 
-#define MY_DEVICE_ID 1           // CHANGE THIS for each slave device (1-6)
 #define ESPNOW_CHANNEL 1         // Must match master_v2
 #define SERVO_PIN 13             // GPIO pin for servo motor
+#define DEVICE_ID 1              // This slave's ID
 
 // ==================== GLOBAL VARIABLES ====================
 
@@ -52,6 +53,19 @@ String repeatString(const char* str, int times) {
   return result;
 }
 
+// Send log to server
+void sendLog(const char* type, const char* message) {
+    JSONVar doc;
+    doc["type"] = "log";
+    doc["source"] = "slave";
+    doc["deviceId"] = DEVICE_ID;
+    doc["message"] = message;
+    doc["timestamp"] = millis();
+    
+    String jsonString = JSON.stringify(doc);
+    Serial.println(jsonString);
+}
+
 // ==================== SETUP ====================
 
 void setup() {
@@ -61,7 +75,7 @@ void setup() {
   
   Serial.println("\n" + repeatString("=", 50));
   Serial.println("ESP32 ESP-NOW Slave");
-  Serial.println("Device ID: " + String(MY_DEVICE_ID));
+  Serial.println("Device ID: " + String(DEVICE_ID));
   Serial.println(repeatString("=", 50));
   
   // Initialize servo
@@ -69,7 +83,7 @@ void setup() {
   myServo.setPeriodHertz(50);  // Standard 50hz servo
   myServo.attach(SERVO_PIN);
   myServo.write(currentAngle);
-  Serial.println("Servo initialized at " + String(currentAngle) + "°");
+  sendLog("info", "Servo initialized");
   
   // ESP-NOW Setup
   WiFi.mode(WIFI_STA);  // Station mode for ESP-NOW
@@ -80,19 +94,18 @@ void setup() {
   
   // Initialize ESP-NOW
   if (esp_now_init() != ESP_OK) {
-    Serial.println("ERROR: ESP-NOW initialization failed!");
-    Serial.println("Try restarting the ESP32");
+    sendLog("error", "Error initializing ESP-NOW");
     return;
   }
   Serial.println("ESP-NOW initialized successfully");
   
   // Register callback function for receiving messages
-  esp_now_register_recv_cb(onDataReceived);
+  esp_now_register_recv_cb(OnDataReceived);
   Serial.println("Registered receive callback function");
   
   Serial.println("\n" + repeatString("=", 50));
   Serial.println("Slave ESP32 ready!");
-  Serial.println("Device ID: " + String(MY_DEVICE_ID));
+  Serial.println("Device ID: " + String(DEVICE_ID));
   Serial.println("Waiting for commands from master...");
   Serial.println("MAC: " + WiFi.macAddress());
   Serial.println(repeatString("=", 50) + "\n");
@@ -127,7 +140,9 @@ void loop() {
       lastMoveTime = currentTime;
       
       // Debug output
-      Serial.println("Servo moved to: " + String(currentAngle) + "°");
+      char message[100];
+      snprintf(message, sizeof(message), "Servo moved to: %d°", currentAngle);
+      sendLog("info", message);
     }
   }
   
@@ -136,10 +151,10 @@ void loop() {
 
 // ==================== ESP-NOW MESSAGE HANDLER ====================
 
-void onDataReceived(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int len) {
+void OnDataReceived(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int len) {
   // Validate message size
   if (len != sizeof(esp_now_message_t)) {
-    Serial.println("[ESP-NOW] Received message with wrong size: " + String(len) + " bytes");
+    sendLog("error", "Invalid message length");
     return;
   }
   
@@ -147,19 +162,17 @@ void onDataReceived(const esp_now_recv_info_t *esp_now_info, const uint8_t *data
   esp_now_message_t* message = (esp_now_message_t*)data;
   
   // Check if message is for this device
-  if (message->deviceId != 0 && message->deviceId != MY_DEVICE_ID) {
+  if (message->deviceId != 0 && message->deviceId != DEVICE_ID) {
     return; // Message is for a different device
   }
   
   // Print received message details
-  Serial.println("\n[ESP-NOW] Message received from master:");
-  Serial.println("   Target Device: " + String(message->deviceId == 0 ? "All devices" : "Device " + String(message->deviceId)));
-  Serial.println("   Angle: " + String(message->angle) + "°");
-  Serial.println("   Direction: " + String(message->direction ? "forward" : "reverse"));
-  Serial.println("   Speed: " + String(message->speed));
-  Serial.println("   Interval: " + String(message->interval) + "ms");
-  Serial.println("   Delay Offset: " + String(message->delay_offset) + "ms");
-  Serial.println("   Timestamp: " + String(message->timestamp) + "ms");
+  char logMessage[200];
+  snprintf(logMessage, sizeof(logMessage), 
+          "Received: angle=%d, dir=%d, speed=%d, interval=%lu, delay=%lu",
+          message->angle, message->direction, message->speed,
+          message->interval, message->delay_offset);
+  sendLog("info", logMessage);
   
   // Store the message
   lastReceivedMessage = *message;
@@ -175,8 +188,8 @@ void onDataReceived(const esp_now_recv_info_t *esp_now_info, const uint8_t *data
     isMoving = true;
     lastMoveTime = millis();
     
-    Serial.println("Servo set to: " + String(targetAngle) + "°");
+    char message[100];
+    snprintf(message, sizeof(message), "Servo set to: %d°", targetAngle);
+    sendLog("info", message);
   }
-  
-  Serial.println("[ESP-NOW] Message processed successfully");
 } 
