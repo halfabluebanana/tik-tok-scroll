@@ -418,11 +418,17 @@
         
         let content = '';
         switch(type) {
-          case 'sent':
-            content = `📤 Sent: ${JSON.stringify(data)}`;
+          case 'frontend':
+            content = `📱 Frontend: ${JSON.stringify(data)}`;
             break;
-          case 'received':
-            content = `📥 Received: ${JSON.stringify(data)}`;
+          case 'server':
+            content = `🖥️ Server: ${JSON.stringify(data)}`;
+            break;
+          case 'master':
+            content = `📡 ESP32 Master: ${JSON.stringify(data)}`;
+            break;
+          case 'slave':
+            content = `📡 ESP32 Slave: ${JSON.stringify(data)}`;
             break;
           case 'error':
             content = `❌ Error: ${data}`;
@@ -432,8 +438,8 @@
         item.innerHTML = `[${timestamp}] ${content}`;
         transmissionLog.insertBefore(item, transmissionLog.firstChild);
         
-        // Keep only last 10 transmissions
-        while (transmissionLog.children.length > 10) {
+        // Keep only last 20 transmissions
+        while (transmissionLog.children.length > 20) {
           transmissionLog.removeChild(transmissionLog.lastChild);
         }
       }
@@ -463,7 +469,7 @@
             averageSpeed: 0
           };
           
-          logTransmission('sent', command);
+          logTransmission('frontend', command);
           const response = await fetch('/api/scroll-metrics', {
             method: 'POST',
             headers: {
@@ -479,7 +485,7 @@
             lastConnectionTime.textContent = `Last attempt: ${new Date().toLocaleTimeString()}`;
           } else {
             const result = await response.json();
-            logTransmission('received', result);
+            logTransmission('server', result);
             connectionStatus.textContent = 'Connected';
             connectionStatus.className = 'status connected';
             lastConnectionTime.textContent = `Last successful: ${new Date().toLocaleTimeString()}`;
@@ -512,10 +518,12 @@
           document.getElementById('scroll-speed').textContent = metrics.currentSpeed || 0;
           document.getElementById('container-index').textContent = metrics.containerIndex || '-';
           document.getElementById('total-containers').textContent = metrics.totalContainers || '-';
-          log('Metrics updated successfully');
+          
+          // Log the metrics update
+          logTransmission('frontend', metrics);
         } catch (error) {
           console.error('Error updating metrics:', error);
-          log('Error updating metrics: ' + error.message);
+          logTransmission('error', 'Error updating metrics: ' + error.message);
         }
       }
 

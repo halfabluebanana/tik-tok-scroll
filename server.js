@@ -89,14 +89,8 @@ app.get('/api/scroll-metrics', (req, res) => {
 // POST endpoint for scroll metrics
 app.post('/api/scroll-metrics', (req, res) => {
   const metrics = req.body;
-  console.log('\nReceived metrics:', {
-    scrollPosition: metrics.scrollPosition,
-    direction: metrics.direction,
-    currentSpeed: metrics.currentSpeed,
-    containerIndex: metrics.containerIndex,
-    totalContainers: metrics.totalContainers
-  });
-
+  console.log('Received metrics:', metrics);
+  
   // Update metrics using the scroll handler
   const updatedMetrics = scrollHandler.updateMetrics(metrics);
 
@@ -110,22 +104,41 @@ app.post('/api/scroll-metrics', (req, res) => {
     interval: 1000
   };
 
-  console.log('\nSending to ESP32:', esp32Data);
+  console.log('Sending to ESP32:', esp32Data);
 
   // Send to ESP32
   if (communicationHandler && communicationHandler.serialPort && communicationHandler.serialPort.isOpen) {
     communicationHandler.sendScrollData(esp32Data)
       .then(() => {
-        res.json({ success: true });
+        res.json({
+          status: 'success',
+          message: 'Metrics received and sent to ESP32',
+          metrics: updatedMetrics,
+          esp32Data: esp32Data,
+          timestamp: new Date().toISOString()
+        });
       })
       .catch(error => {
-        console.error('\nError sending scroll data:', error.message);
-        res.status(500).json({ error: 'Error sending scroll data' });
+        console.error('Error sending scroll data:', error.message);
+        res.status(500).json({ 
+          error: 'Error sending scroll data',
+          details: error.message
+        });
       });
   } else {
-    console.error('\nCommunication handler not available');
-    res.status(500).json({ error: 'Communication handler not available' });
+    console.error('Communication handler not available');
+    res.status(500).json({ 
+      error: 'Communication handler not available',
+      details: 'Serial port not open'
+    });
   }
+});
+
+// Add endpoint to log ESP32 transmissions
+app.post('/api/log-transmission', (req, res) => {
+  const { type, data } = req.body;
+  console.log(`ESP32 ${type}:`, data);
+  res.json({ status: 'success' });
 });
 
 // Add reconnection endpoint

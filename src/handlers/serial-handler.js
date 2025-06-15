@@ -43,14 +43,40 @@ class SerialHandler {
 
     // Add serial port event listeners
     this.serialPort.on('data', (data) => {
-      const timestamp = new Date().toISOString();
-      try {
-        const message = JSON.parse(data.toString());
-        // Commented out noisy ESP32 logs
-        // console.log(`[${timestamp}] Received from ESP32:`, { type: message.type, deviceId: message.deviceId, status: message.status });
-      } catch (error) {
-        // Commented out noisy ESP32 logs
-        // console.log(`[${timestamp}] Raw data from ESP32:`, data.toString());
+      const message = data.toString().trim();
+      console.log('Received from ESP32:', message);
+      
+      // Parse ESP32 logs
+      if (message.startsWith('LOG_TRANSMISSION:')) {
+        const [_, type, jsonData] = message.split(':');
+        try {
+          const data = JSON.parse(jsonData);
+          // Forward to debug panel
+          fetch('http://localhost:3001/api/log-transmission', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ type, data }),
+          }).catch(error => console.error('Error forwarding log:', error));
+        } catch (error) {
+          console.error('Error parsing ESP32 log:', error);
+        }
+      }
+      
+      // Handle other messages
+      if (message.startsWith('ESP32:')) {
+        const [_, jsonData] = message.split(':');
+        try {
+          const data = JSON.parse(jsonData);
+          this.lastResponse = data;
+          if (this.responseCallback) {
+            this.responseCallback(data);
+            this.responseCallback = null;
+          }
+        } catch (error) {
+          console.error('Error parsing ESP32 response:', error);
+        }
       }
     });
 
