@@ -1,7 +1,7 @@
 const { SerialPort } = require('serialport');
 
 class SerialHandler {
-  constructor(portPath = '/dev/tty.usbmodem2101', baudRate = 9600) {
+  constructor(portPath = '/dev/tty.wchusbserial110', baudRate = 115200) {
     this.portPath = portPath;
     this.baudRate = baudRate;
     this.serialPort = null;

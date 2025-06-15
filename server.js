@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3001;
 const CONFIG = {
   useWebSocket: false,  // Set to false to use serial communication
   serialPort: '/dev/tty.wchusbserial110',
-  baudRate: 9600
+  baudRate: 115200
 };
 
 const app = express();
