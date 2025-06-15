@@ -93,10 +93,11 @@ void setup() {
   Serial.begin(115200);
   delay(1000);  // Give serial monitor time to connect
   
-  Serial.println("\n" + String("=").repeat(50));
-  Serial.println("ESP32 ESP-NOW Slave Template");
-  Serial.println("Device ID: " + String(MY_DEVICE_ID));
-  Serial.println(String("=").repeat(50));
+  String header = "\n" + String("=").repeat(50) + "\n";
+  header += "ESP32 ESP-NOW Slave Template\n";
+  header += "Device ID: " + String(MY_DEVICE_ID) + "\n";
+  header += String("=").repeat(50) + "\n";
+  Serial.write(header.c_str());
   
   // ==================== ESP-NOW SETUP (DON'T MODIFY) ====================
   
@@ -124,6 +125,7 @@ void setup() {
   // Initialize servo
   servo.attach(SERVO_PIN);
   servo.write(currentAngle);
+  sendLog("info", "Servo initialized");
   
   Serial.println("\n" + String("=").repeat(50));
   Serial.println("Slave ESP32 ready!");
@@ -204,7 +206,8 @@ void onDataReceived(const uint8_t *mac, const uint8_t *data, int len) {
   
   // Check if message size is correct
   if (len != sizeof(esp_now_message_t)) {
-    Serial.println("[ESP-NOW] Received message with wrong size: " + String(len) + " bytes");
+    String errorMsg = "[ESP-NOW] Received message with wrong size: " + String(len) + " bytes\n";
+    Serial.write(errorMsg.c_str());
     return;
   }
   
@@ -219,14 +222,16 @@ void onDataReceived(const uint8_t *mac, const uint8_t *data, int len) {
   
   // ==================== MESSAGE PROCESSING (DON'T MODIFY) ====================
   
-  Serial.println("\n[ESP-NOW] Message received from master:");
-  Serial.println("   Target Device: " + String(message->deviceId == 0 ? "All devices" : "Device " + String(message->deviceId)));
-  Serial.println("   Angle: " + String(message->angle) + "°");
-  Serial.println("   Direction: " + String(message->direction ? "forward" : "reverse"));
-  Serial.println("   Speed: " + String(message->speed));
-  Serial.println("   Interval: " + String(message->interval) + "ms");
-  Serial.println("   Delay Offset: " + String(message->delay_offset) + "ms");
-  Serial.println("   Timestamp: " + String(message->timestamp) + "ms");
+  // Log received message
+  String msgLog = "\n[ESP-NOW] Message received from master:\n";
+  msgLog += "   Target Device: " + String(message->deviceId == 0 ? "All devices" : "Device " + String(message->deviceId)) + "\n";
+  msgLog += "   Angle: " + String(message->angle) + "°\n";
+  msgLog += "   Direction: " + String(message->direction ? "forward" : "reverse") + "\n";
+  msgLog += "   Speed: " + String(message->speed) + "\n";
+  msgLog += "   Interval: " + String(message->interval) + "ms\n";
+  msgLog += "   Delay Offset: " + String(message->delay_offset) + "ms\n";
+  msgLog += "   Timestamp: " + String(message->timestamp) + "ms\n";
+  Serial.write(msgLog.c_str());
   
   // Store the message for use in main loop
   lastReceivedMessage = *message;
@@ -261,13 +266,14 @@ void onDataReceived(const uint8_t *mac, const uint8_t *data, int len) {
 
 // Send log to server
 void sendLog(const char* type, const char* message) {
-    StaticJsonDocument<256> doc;
-    doc["type"] = type;
+    JSONVar doc;
+    doc["type"] = "log";
     doc["source"] = "slave";
     doc["deviceId"] = MY_DEVICE_ID;
     doc["message"] = message;
     doc["timestamp"] = millis();
     
-    serializeJson(doc, Serial);
-    Serial.println();
+    String jsonString = JSON.stringify(doc);
+    Serial.write(jsonString.c_str());
+    Serial.write('\n');
 }

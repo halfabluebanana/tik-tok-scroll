@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback, memo } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import styled from 'styled-components';
 
 // Move motor command outside component and make it a singleton
@@ -33,167 +33,107 @@ const sendMotorCommand = async (speed, direction) => {
 };
 
 const ScrollMetrics = () => {
-  // console.log('ScrollMetrics component mounted');
-
   const [isVisible, setIsVisible] = useState(true);
-  const [metrics, setMetrics] = useState({
-    currentSpeed: 0,
-    averageSpeed: 0,
-    totalDistance: 0,
-    scrollPosition: 0,
-    direction: 'none' // 'up', 'down', or 'none'
-  });
   
-  // Refs for scroll detection
-  const isScrollingRef = useRef(false);
-  const scrollTimeoutRef = useRef(null);
-  const lastScrollDirectionRef = useRef('none');
-  const lastScrollStartTimeRef = useRef(0);
+  // Refs for scroll tracking
   const lastScrollYRef = useRef(0);
-  const lastScrollTimeRef = useRef(Date.now());
-  const speedHistoryRef = useRef([]);
-  const totalDistanceRef = useRef(0);
-  const isInitialMountRef = useRef(true);
-  const hasScrolledRef = useRef(false);
+  const lastContainerIndexRef = useRef(-1);
+  const lastContainerTimeRef = useRef(Date.now());
 
-  // Function to handle scroll start
-  const handleScrollStart = useCallback((direction) => {
-    // Skip if this is the initial mount or if we haven't scrolled yet
-    if (isInitialMountRef.current || !hasScrolledRef.current) {
-      isInitialMountRef.current = false;
-      hasScrolledRef.current = true;
+  const handleScroll = useCallback((event) => {
+    const container = event.target;
+    if (!container) {
+      console.error('[Browser] No container element found');
       return;
     }
 
-    const now = Date.now();
-    // Only trigger if we're not already scrolling or if enough time has passed since last scroll
-    if (!isScrollingRef.current || (now - lastScrollStartTimeRef.current > 500)) {
-      console.log('Scroll started:', direction);
-      isScrollingRef.current = true;
-      lastScrollStartTimeRef.current = now;
-      sendMotorCommand(255, direction === 'down' ? 1 : 0);
-    }
-  }, []);
-
-  // Function to handle scroll end
-  const handleScrollEnd = useCallback(() => {
-    if (isScrollingRef.current) {
-      console.log('Scroll ended');
-      isScrollingRef.current = false;
-    }
-  }, []);
-
-  // Function to send metrics to backend
-  const sendMetricsToBackend = useCallback(async (metrics) => {
-    // Skip if this is the initial mount or if we haven't scrolled yet
-    if (isInitialMountRef.current || !hasScrolledRef.current) {
-      return;
+    const currentTime = Date.now();
+    const scrollPosition = container.scrollTop;
+    
+    // Calculate direction
+    let direction = 'nothing';
+    if (scrollPosition > lastScrollYRef.current) {
+      direction = 'down';
+    } else if (scrollPosition < lastScrollYRef.current) {
+      direction = 'up';
     }
 
-    try {
-      const scrollWindow = document.getElementById('scroll-window');
-      const scrollHeight = scrollWindow.scrollHeight;
-      const clientHeight = scrollWindow.clientHeight;
-      const maxScroll = scrollHeight - clientHeight;
-      
-      // Calculate scroll position as a percentage of total scrollable area
-      const scrollPercentage = (metrics.scrollPosition / maxScroll) * 100;
-      
-      // Map the percentage to a 0-255 range for motor control
-      const motorSpeed = Math.min(255, Math.max(0, Math.round(scrollPercentage * 2.55)));
+    // Find current video container
+    const videoContainers = container.getElementsByTagName('video');
+    let currentContainerIndex = -1;
+    let timeSpentInContainer = 0;
 
-      const response = await fetch('http://localhost:3001/api/scroll-metrics', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          scrollPosition: motorSpeed,
-          scrollDirection: metrics.direction === 'down' ? 1 : 0
-        }),
-      });
-      
-      if (!response.ok) {
-        console.error('Failed to send metrics to backend');
+    for (let i = 0; i < videoContainers.length; i++) {
+      const rect = videoContainers[i].getBoundingClientRect();
+      if (rect.top >= 0 && rect.top <= window.innerHeight) {
+        currentContainerIndex = i;
+        // Calculate time spent in container
+        if (lastContainerIndexRef.current === i) {
+          timeSpentInContainer = currentTime - lastContainerTimeRef.current;
+        } else {
+          lastContainerTimeRef.current = currentTime;
+        }
+        break;
       }
-    } catch (error) {
-      console.error('Error sending metrics to backend:', error);
     }
+
+    // Log scroll event
+    console.log('[Browser] Scroll Event:', {
+      timestamp: new Date().toISOString(),
+      direction,
+      containerMetrics: {
+        containerIndex: currentContainerIndex,
+        timeSpentInContainer
+      }
+    });
+
+    // Update refs
+    lastScrollYRef.current = scrollPosition;
+    lastContainerIndexRef.current = currentContainerIndex;
+    
+    // Send to server
+    fetch('http://localhost:3001/api/scroll-metrics', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        direction,
+        containerMetrics: {
+          containerIndex: currentContainerIndex,
+          timeSpentInContainer
+        }
+      }),
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    })
+    .then(data => {
+      console.log('[Browser] Server response:', data);
+    })
+    .catch(error => {
+      console.error('[Browser] Error sending scroll metrics:', error.message);
+    });
   }, []);
 
   useEffect(() => {
-    console.log('ScrollMetrics useEffect running - initial setup');
+    console.log('[Browser] Setting up scroll event listener');
     const scrollWindow = document.getElementById('scroll-window');
     if (!scrollWindow) {
-      console.error('Scroll window element not found!');
+      console.error('[Browser] Scroll window element not found!');
       return;
     }
-
-    const handleScroll = () => {
-      const currentTime = Date.now();
-      const currentScrollY = scrollWindow.scrollTop;
-      const timeDiff = currentTime - lastScrollTimeRef.current;
-      const scrollDiff = currentScrollY - lastScrollYRef.current;
-      
-      // Calculate direction
-      let direction = 'none';
-      if (scrollDiff > 0) direction = 'down';
-      else if (scrollDiff < 0) direction = 'up';
-
-      // Calculate current speed (pixels per second)
-      const currentSpeed = Math.abs(scrollDiff / (timeDiff / 1000));
-      
-      // Update speed history
-      const newSpeedHistory = [...speedHistoryRef.current, currentSpeed].slice(-10);
-      const averageSpeed = newSpeedHistory.reduce((a, b) => a + b, 0) / newSpeedHistory.length;
-      speedHistoryRef.current = newSpeedHistory;
-
-      // Update total distance
-      totalDistanceRef.current += Math.abs(scrollDiff);
-
-      const newMetrics = {
-        currentSpeed: Math.round(currentSpeed),
-        averageSpeed: Math.round(averageSpeed),
-        totalDistance: Math.round(totalDistanceRef.current),
-        scrollPosition: Math.round(currentScrollY),
-        direction: direction
-      };
-
-      setMetrics(newMetrics);
-      lastScrollYRef.current = currentScrollY;
-      lastScrollTimeRef.current = currentTime;
-
-      // Send metrics to backend
-      sendMetricsToBackend(newMetrics);
-
-      // Handle scroll start/end detection
-      if (direction !== 'none' && direction !== lastScrollDirectionRef.current) {
-        handleScrollStart(direction);
-      }
-      lastScrollDirectionRef.current = direction;
-
-      // Clear existing timeout
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-
-      // Set new timeout for scroll end
-      scrollTimeoutRef.current = setTimeout(handleScrollEnd, 150);
-    };
 
     scrollWindow.addEventListener('scroll', handleScroll);
     
     return () => {
-      console.log('Cleaning up scroll event listener');
+      console.log('[Browser] Cleaning up scroll event listener');
       scrollWindow.removeEventListener('scroll', handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-      if (motorCommandTimeout) {
-        clearTimeout(motorCommandTimeout);
-      }
     };
-  }, [handleScrollStart, handleScrollEnd, sendMetricsToBackend]);
+  }, [handleScroll]);
 
   if (!isVisible) {
     return (
@@ -212,29 +152,12 @@ const ScrollMetrics = () => {
         <MetricsPanel>
           <CloseButton onClick={() => setIsVisible(false)}>×</CloseButton>
           <MetricItem>
-            <MetricLabel>Current Speed:</MetricLabel>
-            <MetricValue>{metrics.currentSpeed} px/s</MetricValue>
+            <MetricLabel>Scroll Direction:</MetricLabel>
+            <MetricValue>{lastScrollYRef.current > 0 ? 'Scrolling' : 'Idle'}</MetricValue>
           </MetricItem>
           <MetricItem>
-            <MetricLabel>Average Speed:</MetricLabel>
-            <MetricValue>{metrics.averageSpeed} px/s</MetricValue>
-          </MetricItem>
-          <MetricItem>
-            <MetricLabel>Total Distance:</MetricLabel>
-            <MetricValue>{metrics.totalDistance} px</MetricValue>
-          </MetricItem>
-          <MetricItem>
-            <MetricLabel>Scroll Position:</MetricLabel>
-            <MetricValue>{metrics.scrollPosition} px</MetricValue>
-          </MetricItem>
-          <MetricItem>
-            <MetricLabel>Direction:</MetricLabel>
-            <MetricValue style={{ 
-              color: metrics.direction === 'up' ? '#4CAF50' : 
-                     metrics.direction === 'down' ? '#2196F3' : '#9E9E9E'
-            }}>
-              {metrics.direction.toUpperCase()}
-            </MetricValue>
+            <MetricLabel>Current Container:</MetricLabel>
+            <MetricValue>{lastContainerIndexRef.current + 1}</MetricValue>
           </MetricItem>
         </MetricsPanel>
       )}
@@ -244,35 +167,34 @@ const ScrollMetrics = () => {
 
 const MetricsContainer = styled.div`
   position: fixed;
-  top: 20px;
+  bottom: 20px;
   right: 20px;
   z-index: 1000;
 `;
 
 const ToggleButton = styled.button`
-  background: #2196F3;
+  padding: 10px 20px;
+  background-color: #007bff;
   color: white;
   border: none;
-  padding: 10px 20px;
   border-radius: 5px;
   cursor: pointer;
-  font-weight: bold;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  font-size: 14px;
   
   &:hover {
-    background: #1976D2;
+    background-color: #0056b3;
   }
 `;
 
 const MetricsPanel = styled.div`
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
+  position: absolute;
+  bottom: 60px;
+  right: 0;
+  background-color: white;
   padding: 20px;
-  border-radius: 10px;
-  margin-top: 10px;
+  border-radius: 5px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   min-width: 200px;
-  position: relative;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 `;
 
 const CloseButton = styled.button`
@@ -281,13 +203,12 @@ const CloseButton = styled.button`
   right: 5px;
   background: none;
   border: none;
-  color: white;
   font-size: 20px;
   cursor: pointer;
-  padding: 5px;
+  color: #666;
   
   &:hover {
-    color: #ff4444;
+    color: #000;
   }
 `;
 
@@ -300,13 +221,11 @@ const MetricItem = styled.div`
 
 const MetricLabel = styled.span`
   font-weight: bold;
-  margin-right: 10px;
+  color: #666;
 `;
 
 const MetricValue = styled.span`
-  font-family: monospace;
-  font-size: 1.1em;
+  color: #333;
 `;
 
-// Memoize the entire component
-export default memo(ScrollMetrics); 
+export default ScrollMetrics; 

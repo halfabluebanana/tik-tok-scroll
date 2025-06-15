@@ -19,21 +19,19 @@ class SerialHandler {
 
     // Add error handling for serial port
     this.serialPort.on('error', (err) => {
-      console.error('Serial port error:', err);
-      console.error('Error details:', {
-        message: err.message,
-        code: err.code,
-        stack: err.stack
-      });
+      const timestamp = new Date().toISOString();
+      console.error(`[${timestamp}] Serial port error:`, err.message);
     });
 
     this.serialPort.on('open', () => {
-      console.log('Serial port opened successfully');
+      const timestamp = new Date().toISOString();
+      console.log(`[${timestamp}] Serial port opened successfully`);
       this.isConnected = true;
     });
 
     this.serialPort.on('close', () => {
-      console.log('Serial port closed');
+      const timestamp = new Date().toISOString();
+      console.log(`[${timestamp}] Serial port closed`);
       this.isConnected = false;
       // Attempt to reopen the port after a delay
       setTimeout(() => {
@@ -45,10 +43,17 @@ class SerialHandler {
 
     // Add serial port event listeners
     this.serialPort.on('data', (data) => {
-      console.log('\n=== Received Data from Arduino ===');
-      console.log('Raw data:', data.toString());
-      console.log('Data length:', data.length);
-      console.log('Data type:', typeof data);
+      const timestamp = new Date().toISOString();
+      try {
+        const message = JSON.parse(data.toString());
+        console.log(`[${timestamp}] Received from ESP32:`, {
+          type: message.type,
+          deviceId: message.deviceId,
+          status: message.status
+        });
+      } catch (error) {
+        console.log(`[${timestamp}] Raw data from ESP32:`, data.toString());
+      }
     });
 
     // Initial attempt to open the port
@@ -57,22 +62,18 @@ class SerialHandler {
 
   // Try to open the port with retry logic
   openSerialPort(retries = 3) {
-    console.log('Attempting to open serial port...');
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] Attempting to open serial port...`);
     this.serialPort.open((err) => {
       if (err) {
-        console.error('Error opening serial port:', err);
-        console.error('Error details:', {
-          message: err.message,
-          code: err.code,
-          stack: err.stack
-        });
+        console.error(`[${timestamp}] Error opening serial port:`, err.message);
         
         if (retries > 0) {
-          console.log(`Retrying... ${retries} attempts remaining`);
+          console.log(`[${timestamp}] Retrying... ${retries} attempts remaining`);
           setTimeout(() => this.openSerialPort(retries - 1), 1000);
         }
       } else {
-        console.log('Serial port opened successfully');
+        console.log(`[${timestamp}] Serial port opened successfully`);
         this.isConnected = true;
       }
     });
@@ -100,33 +101,46 @@ class SerialHandler {
   }
 
   // Send scroll data to ESP32 devices
-  async sendScrollData(metrics) {
-    return new Promise((resolve, reject) => {
-      console.log('\n=== Sending Scroll Data via Serial ===');
-      console.log('Scroll metrics:', metrics);
+  async sendScrollData(data) {
+    const timestamp = new Date().toISOString();
+    if (!this.serialPort) {
+      console.error(`[${timestamp}] Serial port not initialized`);
+      throw new Error('Serial port not initialized');
+    }
 
-      // Transform metrics to ESP32 message format
-      const esp32Message = this.transformToESP32Message(metrics);
-      const messageStr = JSON.stringify(esp32Message) + '\n';
-      
-      console.log('ESP32 message:', esp32Message);
-      
-      if (this.serialPort && this.serialPort.isOpen) {
-        this.serialPort.write(messageStr, (err) => {
-          if (err) {
-            console.error('Error sending data:', err);
-            reject(err);
-          } else {
-            console.log('Data sent successfully to ESP32');
-            resolve({ message: esp32Message, status: 'success' });
-          }
+    try {
+      // Convert data to JSON string
+      const jsonString = JSON.stringify(data);
+      console.log(`[${timestamp}] Sending to serial port:`, {
+        type: data.type,
+        angle: data.angle,
+        direction: data.direction,
+        speed: data.speed,
+        interval: data.interval
+      });
+
+      // Write to serial port
+      await this.serialPort.write(jsonString + '\n');
+      console.log(`[${timestamp}] Successfully wrote to serial port`);
+
+      // Listen for response
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          console.warn(`[${timestamp}] No response received from ESP32 within timeout`);
+          resolve(); // Resolve anyway to not block the process
+        }, 1000);
+
+        this.serialPort.once('data', (data) => {
+          clearTimeout(timeout);
+          const response = data.toString().trim();
+          //console.log(`[${timestamp}] Received from ESP32:`, response);
+          resolve(response);
         });
-      } else {
-        const error = new Error('Serial port not open, cannot send data');
-        console.log(error.message);
-        reject(error);
-      }
-    });
+      });
+    } catch (error) {
+      console.error(`[${timestamp}] Error sending data to serial port:`, error.message);
+      throw error;
+    }
   }
 
   // Handle GET request for scroll metrics

@@ -115,7 +115,7 @@ void setup() {
 
 void loop() {
   // Check connection status
-  if (hasReceivedMessage && (millis() - lastMessageTime > CONNECTION_TIMEOUT)) {
+  if (!hasReceivedMessage && (millis() - lastMessageTime > CONNECTION_TIMEOUT)) {
     Serial.println("[WARNING] No messages from master for " + String(CONNECTION_TIMEOUT/1000) + " seconds");
     Serial.println("Using last known command as fallback");
     hasReceivedMessage = false;

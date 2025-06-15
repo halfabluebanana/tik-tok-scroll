@@ -33,7 +33,10 @@ app.use(express.json());
 
 // Add logging middleware
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
+  // Only log non-GET /api/scroll-metrics requests
+  if (!(req.method === 'GET' && req.url === '/api/scroll-metrics')) {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  }
   next();
 });
 
@@ -79,79 +82,73 @@ app.use('/uploads/', (req, res, next) => {
 
 // Store the latest metrics
 let latestMetrics = {
-  currentSpeed: 0,
-  averageSpeed: 0,
-  totalDistance: 0,
-  scrollPosition: 0,
-  direction: 'none',
+  direction: 'nothing',
   containerMetrics: {
-    currentContainer: null,
-    timeSpent: 0,
-    timeBetween: 0,
-    containerIndex: 0,
-    totalContainers: 0
+    containerIndex: -1,
+    timeSpentInContainer: 0
   }
 };
 
 // Scroll metrics endpoints
 app.get('/api/scroll-metrics', (req, res) => {
-  // console.log('\n=== GET /api/scroll-metrics ===');
-  console.log('Current metrics:', latestMetrics);
   res.json(latestMetrics);
 });
 
-app.post('/api/scroll-metrics', async (req, res) => {
-  console.log('\n=== POST /api/scroll-metrics ===');
-  console.log('Received metrics:', req.body);
+app.post('/api/scroll-metrics', (req, res) => {
+  const timestamp = new Date().toISOString();
+  const metrics = req.body;
   
+  console.log(`[${timestamp}] Received scroll metrics:`, {
+    direction: metrics.direction,
+    containerMetrics: metrics.containerMetrics
+  });
+
   // Update latest metrics
   latestMetrics = {
-    ...req.body,
+    direction: metrics.direction,
     containerMetrics: {
-      ...req.body.containerMetrics,
-      containerIndex: req.body.containerMetrics?.containerIndex || 0,
-      totalContainers: req.body.containerMetrics?.totalContainers || 0
+      containerIndex: metrics.containerMetrics.containerIndex,
+      timeSpentInContainer: metrics.containerMetrics.timeSpentInContainer
     }
   };
 
-  console.log('Updated metrics:', latestMetrics);
+  // Transform and send to ESP32
+  const esp32Message = transformToESP32Message(metrics);
+  console.log(`[${timestamp}] Sending to ESP32:`, {
+    direction: esp32Message.direction,
+    containerIndex: esp32Message.containerMetrics.containerIndex,
+    timeSpentInContainer: esp32Message.containerMetrics.timeSpentInContainer
+  });
 
-  // Send data to devices through the appropriate handler
-  try {
-    const transformedData = {
-      type: 'scroll_data',
-      deviceId: 0,  // Broadcast to all devices
-      angle: Math.min(180, Math.max(0, Math.round(latestMetrics.scrollPosition * (180/255)))),
-      direction: latestMetrics.direction === 'down' ? 1 : 0,
-      speed: Math.min(255, Math.max(0, Math.round(latestMetrics.currentSpeed / 10))),
-      interval: 100,  // Default interval between animations
-      delay_offset: 0,  // No delay for broadcast
-      timestamp: Date.now(),
-      containerMetrics: {
-        currentContainer: latestMetrics.containerMetrics.currentContainer || '',
-        timeSpent: latestMetrics.containerMetrics.timeSpent || 0,
-        timeBetween: latestMetrics.containerMetrics.timeBetween || 0,
-        containerIndex: latestMetrics.containerMetrics.containerIndex || 0,
-        totalContainers: latestMetrics.containerMetrics.totalContainers || 0
-      }
-    };
+  // Send to ESP32
+  communicationHandler.sendScrollData(esp32Message)
+    .then(() => {
+      console.log(`[${timestamp}] Successfully sent to ESP32`);
+    })
+    .catch(error => {
+      console.error(`[${timestamp}] Error sending to ESP32:`, error.message);
+    });
 
-    await communicationHandler.sendScrollData(transformedData);
-    
-    res.json({ 
-      status: 'success',
-      mode: CONFIG.useWebSocket ? 'websocket' : 'serial',
-      metrics: latestMetrics
-    });
-  } catch (error) {
-    console.error('Error sending scroll data:', error);
-    res.status(500).json({ 
-      status: 'error', 
-      error: error.message,
-      mode: CONFIG.useWebSocket ? 'websocket' : 'serial'
-    });
-  }
+  res.json({ status: 'success', metrics: latestMetrics });
 });
+
+// Transform scroll metrics to ESP32 message format
+function transformToESP32Message(metrics) {
+  // Convert direction to numeric value
+  let direction = 0;
+  if (metrics.direction === 'down') direction = 1;
+  else if (metrics.direction === 'up') direction = 0;
+  
+  return {
+    type: 'scroll_data',
+    deviceId: 0, // Broadcast to all devices
+    direction,
+    containerMetrics: {
+      containerIndex: metrics.containerMetrics.containerIndex,
+      timeSpentInContainer: metrics.containerMetrics.timeSpentInContainer
+    }
+  };
+}
 
 app.get("/", (req, res) => {
   console.log('\\n=== GET /scroll-speeds ===');
