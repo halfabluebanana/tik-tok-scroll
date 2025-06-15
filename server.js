@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require('cors');
 const path = require("path");
 const http = require('http');
+const WebSocket = require('ws');
 
 // Import handlers
 const SerialHandler = require('./src/handlers/serial-handler');
@@ -17,6 +18,118 @@ const CONFIG = {
   serialPort: '/dev/tty.wchusbserial110',
   baudRate: 115200
 };
+
+// ESP-NOW connection status tracking
+const espNowStatus = {
+  slaves: {
+    1: { connected: false, lastSeen: null, macAddress: 'F0:24:F9:04:01:58' },
+    2: { connected: false, lastSeen: null, macAddress: 'F0:24:F9:F5:66:70' }
+  },
+  master: { connected: false, lastSeen: null }
+};
+
+// Create WebSocket server
+const wss = new WebSocket.Server({ noServer: true });
+
+// Store connected WebSocket clients
+const clients = new Set();
+
+// Function to broadcast message to all connected clients
+function broadcast(message) {
+  clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify(message));
+    }
+  });
+}
+
+// WebSocket connection handler
+wss.on('connection', (ws) => {
+  logServerEvent('New WebSocket client connected', 'info');
+  clients.add(ws);
+  
+  // Send initial status
+  ws.send(JSON.stringify({
+    type: 'espnow_status',
+    data: espNowStatus
+  }));
+  
+  ws.on('close', () => {
+    logServerEvent('WebSocket client disconnected', 'info');
+    clients.delete(ws);
+  });
+});
+
+// Function to update ESP-NOW status and broadcast changes
+function updateEspNowStatus(type, deviceId, data) {
+  const timestamp = new Date();
+  
+  logServerEvent(`Updating ESP-NOW status for ${type}`, 'info');
+  
+  if (type === 'master') {
+    espNowStatus.master.connected = true;
+    espNowStatus.master.lastSeen = timestamp;
+    logServerEvent(`Master status updated - Connected: true, Last seen: ${timestamp}`, 'info');
+  } else if (type === 'slave1' || type === 'slave2') {
+    const id = type === 'slave1' ? 1 : 2;
+    espNowStatus.slaves[id].connected = true;
+    espNowStatus.slaves[id].lastSeen = timestamp;
+    logServerEvent(`Slave ${id} status updated - Connected: true, Last seen: ${timestamp}`, 'info');
+  }
+  
+  // Always broadcast status updates
+  broadcast({
+    type: 'espnow_status',
+    data: espNowStatus
+  });
+  
+  // Check for stale connections (no updates in last 5 seconds)
+  const now = new Date();
+  let statusChanged = false;
+  
+  Object.keys(espNowStatus.slaves).forEach(id => {
+    if (espNowStatus.slaves[id].lastSeen && 
+        (now - espNowStatus.slaves[id].lastSeen) > 5000) {
+      if (espNowStatus.slaves[id].connected) {
+        espNowStatus.slaves[id].connected = false;
+        statusChanged = true;
+        logServerEvent(`Slave ${id} marked as disconnected due to timeout`, 'warning');
+      }
+    }
+  });
+  
+  if (espNowStatus.master.lastSeen && 
+      (now - espNowStatus.master.lastSeen) > 5000) {
+    if (espNowStatus.master.connected) {
+      espNowStatus.master.connected = false;
+      statusChanged = true;
+      logServerEvent('Master marked as disconnected due to timeout', 'warning');
+    }
+  }
+
+  // Broadcast status changes
+  if (statusChanged) {
+    logServerEvent('Broadcasting ESP-NOW status update', 'info');
+    broadcast({
+      type: 'espnow_status',
+      data: espNowStatus
+    });
+  }
+}
+
+// Function to log server events
+function logServerEvent(message, type = 'info') {
+  const logEntry = {
+    type: 'log',
+    data: {
+      message,
+      type,
+      timestamp: new Date().toISOString()
+    }
+  };
+  broadcast(logEntry);
+  console.log(`[${type.toUpperCase()}] ${message}`);
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -134,11 +247,22 @@ app.post('/api/scroll-metrics', (req, res) => {
   }
 });
 
-// Add endpoint to log ESP32 transmissions
+// Modify the log-transmission endpoint to update ESP-NOW status and log events
 app.post('/api/log-transmission', (req, res) => {
   const { type, data } = req.body;
-  console.log(`ESP32 ${type}:`, data);
+  
+  // Extract device type from the log format
+  const deviceType = type.split(':')[1].split(',')[0];  // Gets 'master', 'slave1', or 'slave2'
+  
+  logServerEvent(`Received transmission from ${deviceType}: ${JSON.stringify(data)}`, 'info');
+  updateEspNowStatus(deviceType, data.deviceId, data);
   res.json({ status: 'success' });
+});
+
+// Add new endpoint to get ESP-NOW status
+app.get('/api/espnow-status', (req, res) => {
+  logServerEvent('ESP-NOW status requested', 'info');
+  res.json(espNowStatus);
 });
 
 // Add reconnection endpoint
@@ -255,9 +379,17 @@ app.post('/api/send-data', async (req, res) => {
     }
 });
 
+// Handle WebSocket upgrade
+server.on('upgrade', (request, socket, head) => {
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request);
+  });
+});
+
 // Start server
 server.listen(PORT, '0.0.0.0', () => {
-  console.log('\nServer started:');
+  logServerEvent(`Server started on port ${PORT}`, 'info');
+  logServerEvent('Waiting for ESP-NOW connections...', 'info');
   console.log(`- Listening on http://0.0.0.0:${PORT}`);
   console.log(`- Debug panel: http://localhost:${PORT}/scroll-speeds`);
   console.log(`- Communication mode: ${CONFIG.useWebSocket ? 'WebSocket' : 'Serial'}`);

@@ -249,9 +249,9 @@
       .metric {
         display: flex;
         justify-content: space-between;
-        align-items: center;
-        padding: 5px;
-        border-bottom: 1px solid #333;
+        padding: 10px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 4px;
       }
 
       .metric:last-child {
@@ -281,6 +281,96 @@
 
       .reconnect-btn:hover {
         background: #1976D2;
+      }
+
+      /* ESP-NOW Connection Status Styles */
+      .espnow-panel {
+        margin-top: 20px;
+        padding: 15px;
+        background: rgba(0, 0, 0, 0.8);
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .device-status {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+
+      .device-card {
+        padding: 15px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .device-card.connected {
+        border-left: 4px solid #4CAF50;
+      }
+
+      .device-card.disconnected {
+        border-left: 4px solid #f44336;
+      }
+
+      .device-name {
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+
+      .device-mac {
+        font-size: 0.8em;
+        color: #888;
+        margin-bottom: 5px;
+      }
+
+      .device-last-seen {
+        font-size: 0.8em;
+        color: #888;
+      }
+
+      .server-logs {
+        margin-top: 20px;
+        padding: 15px;
+        background: rgba(0, 0, 0, 0.8);
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .log-container {
+        height: 300px;
+        overflow-y: auto;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 10px;
+        border-radius: 5px;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        color: white;
+      }
+
+      .log-entry {
+        margin: 5px 0;
+        padding: 5px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .log-entry.info {
+        border-left: 3px solid #2196F3;
+      }
+
+      .log-entry.error {
+        border-left: 3px solid #f44336;
+      }
+
+      .log-entry.success {
+        border-left: 3px solid #4CAF50;
+      }
+
+      .log-timestamp {
+        color: #888;
+        margin-right: 10px;
       }
     </style>
   </head>
@@ -377,6 +467,22 @@
             </select>
           </div>
           <button onclick="sendMotorCommand()" class="control-btn">Send Command</button>
+        </div>
+      </div>
+
+      <!-- New ESP-NOW Connection Status Panel -->
+      <div class="espnow-panel">
+        <h2>ESP-NOW Connection Status</h2>
+        <div class="device-status" id="device-status">
+          <!-- Device status cards will be populated here -->
+        </div>
+      </div>
+
+      <!-- New Server Logs Panel -->
+      <div class="server-logs">
+        <h2>Server Logs</h2>
+        <div class="log-container" id="log-container">
+          <!-- Logs will be populated here -->
         </div>
       </div>
 
@@ -642,6 +748,111 @@
         const speed = document.getElementById('speed-control').value;
         const direction = document.getElementById('direction-control').value;
         sendCommand(speed, direction);
+      }
+
+      // Function to update ESP-NOW connection status
+      function updateEspNowStatus() {
+        fetch('/api/espnow-status')
+          .then(response => response.json())
+          .then(data => {
+            const deviceStatus = document.getElementById('device-status');
+            deviceStatus.innerHTML = '';
+
+            // Add Master status
+            const masterCard = createDeviceCard('Master', data.master);
+            deviceStatus.appendChild(masterCard);
+
+            // Add Slave statuses
+            Object.entries(data.slaves).forEach(([id, slave]) => {
+              const slaveCard = createDeviceCard(`Slave ${id}`, slave);
+              deviceStatus.appendChild(slaveCard);
+            });
+          })
+          .catch(error => console.error('Error fetching ESP-NOW status:', error));
+      }
+
+      // Function to create device status card
+      function createDeviceCard(name, data) {
+        const card = document.createElement('div');
+        card.className = `device-card ${data.connected ? 'connected' : 'disconnected'}`;
+        
+        const lastSeen = data.lastSeen ? new Date(data.lastSeen).toLocaleTimeString() : 'Never';
+        
+        card.innerHTML = `
+          <div class="device-name">${name}</div>
+          ${data.macAddress ? `<div class="device-mac">MAC: ${data.macAddress}</div>` : ''}
+          <div class="device-last-seen">Last seen: ${lastSeen}</div>
+          <div class="device-status">Status: ${data.connected ? 'Connected' : 'Disconnected'}</div>
+        `;
+        
+        return card;
+      }
+
+      // Function to add log entry
+      function addLogEntry(message, type = 'info') {
+        const logContainer = document.getElementById('log-container');
+        const entry = document.createElement('div');
+        entry.className = `log-entry ${type}`;
+        
+        const timestamp = new Date().toLocaleTimeString();
+        entry.innerHTML = `
+          <span class="log-timestamp">${timestamp}</span>
+          <span class="log-message">${message}</span>
+        `;
+        
+        logContainer.appendChild(entry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+      }
+
+      // Update ESP-NOW status every 2 seconds
+      setInterval(updateEspNowStatus, 2000);
+
+      // Initial update
+      updateEspNowStatus();
+
+      // Add some initial logs
+      addLogEntry('Server started', 'info');
+      addLogEntry('Waiting for ESP-NOW connections...', 'info');
+
+      // WebSocket connection
+      const ws = new WebSocket(`ws://${window.location.host}`);
+      
+      ws.onopen = () => {
+        addLogEntry('WebSocket connected', 'success');
+      };
+      
+      ws.onclose = () => {
+        addLogEntry('WebSocket disconnected', 'error');
+      };
+      
+      ws.onerror = (error) => {
+        addLogEntry('WebSocket error: ' + error.message, 'error');
+      };
+      
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        
+        if (message.type === 'log') {
+          addLogEntry(message.data.message, message.data.type);
+        } else if (message.type === 'espnow_status') {
+          updateDeviceStatus(message.data);
+        }
+      };
+
+      // Function to update device status from WebSocket
+      function updateDeviceStatus(data) {
+        const deviceStatus = document.getElementById('device-status');
+        deviceStatus.innerHTML = '';
+
+        // Add Master status
+        const masterCard = createDeviceCard('Master', data.master);
+        deviceStatus.appendChild(masterCard);
+
+        // Add Slave statuses
+        Object.entries(data.slaves).forEach(([id, slave]) => {
+          const slaveCard = createDeviceCard(`Slave ${id}`, slave);
+          deviceStatus.appendChild(slaveCard);
+        });
       }
     </script>
   </body>

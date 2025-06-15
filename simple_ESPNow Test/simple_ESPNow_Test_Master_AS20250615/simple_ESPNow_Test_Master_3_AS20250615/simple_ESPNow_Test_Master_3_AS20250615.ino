@@ -96,21 +96,23 @@ void setup() {
 }
 
 void loop() {
-  // Set values to send
-  outgoingData.deviceId = 1;
-  outgoingData.angle = 90;  // Example angle
-  outgoingData.direction = 1;  // 1 for down, 0 for up
-  outgoingData.speed = 1.5;  // Example speed
-  outgoingData.interval = 100;  // Example interval
-
   // Send message to all slaves
   for (int i = 0; i < numSlaves; i++) {
+    // Set values to send with appropriate device ID
+    outgoingData.deviceId = i + 1;  // Device ID 1 for first slave, 2 for second slave
+    outgoingData.angle = 90;  // Example angle
+    outgoingData.direction = 1;  // 1 for down, 0 for up
+    outgoingData.speed = 1.5;  // Example speed
+    outgoingData.interval = 100;  // Example interval
+
     esp_err_t result = esp_now_send(slaveAddresses[i], (uint8_t *) &outgoingData, sizeof(outgoingData));
     
     if (result == ESP_OK) {
       Serial.print("Sent to slave ");
       Serial.print(i);
-      Serial.println(" with success");
+      Serial.print(" (Device ID: ");
+      Serial.print(outgoingData.deviceId);
+      Serial.println(") with success");
     }
     else {
       Serial.print("Error sending to slave ");

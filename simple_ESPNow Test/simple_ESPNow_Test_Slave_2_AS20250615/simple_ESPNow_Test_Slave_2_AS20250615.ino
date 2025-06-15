@@ -20,14 +20,26 @@ void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
            esp_now_info->src_addr[0], esp_now_info->src_addr[1], esp_now_info->src_addr[2],
            esp_now_info->src_addr[3], esp_now_info->src_addr[4], esp_now_info->src_addr[5]);
   
+  // Copy the received data into our structure
+  memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
+  
+  // Only process data meant for device ID 2
+  if (incomingReadings.deviceId != 2) {
+    Serial.println("\n=== Received Data (Ignored) ===");
+    Serial.print("From MAC: ");
+    Serial.println(macStr);
+    Serial.print("Device ID: ");
+    Serial.println(incomingReadings.deviceId);
+    Serial.println("Not meant for this device (ID 2), ignoring...");
+    Serial.println("==================\n");
+    return;
+  }
+  
   Serial.println("\n=== Received Data ===");
   Serial.print("From MAC: ");
   Serial.println(macStr);
   Serial.print("Length: ");
   Serial.println(len);
-  
-  // Copy the received data into our structure
-  memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
   
   Serial.println("\nData Contents:");
   Serial.print("Device ID: ");
