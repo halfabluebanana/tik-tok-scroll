@@ -9,6 +9,7 @@ import IconInbox from './nav-inbox.svg'
 import IconUser from './nav-user.svg'
 import IconAddVid from './nav-addvid.svg'
 import IconSearch from './nav-search.svg'
+import ScrollMetrics from './components/ScrollMetrics'
 
 import StatLike from './stat-like.svg'
 import StatComment from './stat-comment.svg'
@@ -113,6 +114,7 @@ function App() {
           <TikVideo key={url} index={index} url={url} channel={channel} description={description} song={song} likes={likes} messages={messages} shares={shares} />)}
           <Spacer />
       </ScrollWindow>
+      <ScrollMetrics />
       <nav className="tiktik-menu">
        
       </nav>
