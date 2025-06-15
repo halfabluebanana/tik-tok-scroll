@@ -1,5 +1,5 @@
-#include <esp_now.h>
 #include <WiFi.h>
+#include <esp_now.h>
 #include <Arduino_JSON.h>
 
 // Structure to send data
@@ -14,9 +14,8 @@ typedef struct struct_message {
 struct_message outgoingData;
 
 // MAC address of the Slave ESP32
-uint8_t broadcastAddress[] = {0xF0, 0x24, 0xF9, 0xF5, 0x66, 0x70};  // ESP32_2 ; // Slave 2 MAC address
+uint8_t slaveAddress[] = {0xF0, 0x24, 0xF9, 0xF5, 0x66, 0x70};  // ESP32_2 MAC address
 
-// Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
@@ -27,19 +26,6 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   Serial.println(macStr);
   Serial.print("Status: ");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-  
-  Serial.println("\nData Contents:");
-  Serial.print("Device ID: ");
-  Serial.println(outgoingData.deviceId);
-  Serial.print("Angle: ");
-  Serial.println(outgoingData.angle);
-  Serial.print("Direction: ");
-  Serial.println(outgoingData.direction);
-  Serial.print("Speed: ");
-  Serial.println(outgoingData.speed);
-  Serial.print("Interval: ");
-  Serial.println(outgoingData.interval);
-  Serial.println("==================\n");
   
   // Create JSON object for transmission log
   JSONVar logData;
@@ -66,7 +52,7 @@ void setup() {
   
   // Set device as a Wi-Fi Station
   WiFi.mode(WIFI_STA);
-  WiFi.disconnect(); // Disconnect from any existing WiFi connection
+  WiFi.disconnect();
   delay(100); // Give some time for disconnect
   
   // Print MAC address
@@ -80,22 +66,21 @@ void setup() {
   }
   Serial.println("ESP-NOW initialized successfully");
 
+  // Register for a callback function that will be called when data is sent
+  esp_now_register_send_cb(OnDataSent);
+
   // Register peer
-  esp_now_peer_info_t peerInfo;
-  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, slaveAddress, 6);
   peerInfo.channel = 0;  
   peerInfo.encrypt = false;
-  
+
   // Add peer        
   if (esp_now_add_peer(&peerInfo) != ESP_OK) {
     Serial.println("Failed to add peer");
     return;
   }
   Serial.println("Peer added successfully");
-
-  // Register for a callback function that will be called when data is sent
-  esp_now_register_send_cb(OnDataSent);
-  Serial.println("Send callback registered");
   
   Serial.println("ESP32 Master initialized and ready to send data");
 }
@@ -109,7 +94,7 @@ void loop() {
   outgoingData.interval = 100;  // Example interval
 
   // Send message via ESP-NOW
-  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &outgoingData, sizeof(outgoingData));
+  esp_err_t result = esp_now_send(slaveAddress, (uint8_t *) &outgoingData, sizeof(outgoingData));
   
   if (result == ESP_OK) {
     Serial.println("Sent with success");

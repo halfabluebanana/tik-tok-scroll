@@ -66,7 +66,7 @@ void setup() {
   
   // Set device as a Wi-Fi Station
   WiFi.mode(WIFI_STA);
-  WiFi.disconnect(); // Disconnect from any existing WiFi connection
+  WiFi.disconnect();
   delay(100); // Give some time for disconnect
   
   // Print MAC address
