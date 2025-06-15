@@ -124,6 +124,164 @@
         color: white;
         border: 1px solid rgba(255, 0, 0, 0.3);
       }
+      .connection-panel {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 15px;
+        align-items: center;
+        margin-bottom: 15px;
+      }
+      
+      .connection-info {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      
+      .connection-time {
+        font-size: 0.8em;
+        color: #888;
+      }
+      
+      .reconnect-button {
+        background: transparent;
+        color: white;
+        border: 1px solid white;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.3s;
+      }
+      
+      .reconnect-button:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      
+      .transmission-log {
+        margin-top: 15px;
+        padding: 10px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 5px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      
+      .transmission-item {
+        margin: 5px 0;
+        padding: 5px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.05);
+      }
+      
+      .transmission-item.sent {
+        border-left: 3px solid #4CAF50;
+      }
+      
+      .transmission-item.received {
+        border-left: 3px solid #2196F3;
+      }
+      
+      .transmission-item.error {
+        border-left: 3px solid #f44336;
+      }
+
+      .transmission-log {
+        background: #1a1a1a;
+        border-radius: 4px;
+        padding: 10px;
+        margin-top: 10px;
+        max-height: 300px;
+        overflow-y: auto;
+        font-family: monospace;
+      }
+
+      .log-entry {
+        display: grid;
+        grid-template-columns: 100px 100px 1fr 100px;
+        gap: 10px;
+        padding: 5px;
+        border-bottom: 1px solid #333;
+      }
+
+      .log-entry:last-child {
+        border-bottom: none;
+      }
+
+      .timestamp {
+        color: #888;
+      }
+
+      .type {
+        font-weight: bold;
+      }
+
+      .type.command {
+        color: #4CAF50;
+      }
+
+      .type.response {
+        color: #2196F3;
+      }
+
+      .type.error {
+        color: #f44336;
+      }
+
+      .data {
+        color: #fff;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      .interval {
+        color: #FFC107;
+        text-align: right;
+      }
+
+      .metrics-grid {
+        display: grid;
+        gap: 10px;
+        padding: 10px;
+        background: #1a1a1a;
+        border-radius: 4px;
+      }
+
+      .metric {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px;
+        border-bottom: 1px solid #333;
+      }
+
+      .metric:last-child {
+        border-bottom: none;
+      }
+
+      .label {
+        color: #888;
+        font-weight: bold;
+      }
+
+      #connection-status {
+        margin: 10px 0;
+        padding: 5px;
+        background: #1a1a1a;
+        border-radius: 4px;
+      }
+
+      .reconnect-btn {
+        background: #2196F3;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      .reconnect-btn:hover {
+        background: #1976D2;
+      }
     </style>
   </head>
   <body>
@@ -155,19 +313,88 @@
       </div>
       
       <div class="panel">
-        <h2>Motor Controls</h2>
-        <div class="controls">
-          <button class="control-button" onclick="sendCommand(255, 1)">Full Speed Forward</button>
-          <button class="control-button" onclick="sendCommand(127, 1)">Half Speed Forward</button>
-          <button class="control-button" onclick="sendCommand(0, 0)">Stop</button>
-          <button class="control-button" onclick="sendCommand(127, 0)">Half Speed Backward</button>
-          <button class="control-button" onclick="sendCommand(255, 0)">Full Speed Backward</button>
+        <h3>Current Scroll Metrics</h3>
+        <div class="metrics-grid">
+          <div class="metric">
+            <span class="label">Scroll Position:</span>
+            <span id="scroll-position">0</span>
+          </div>
+          <div class="metric">
+            <span class="label">Direction:</span>
+            <span id="scroll-direction">-</span>
+          </div>
+          <div class="metric">
+            <span class="label">Speed:</span>
+            <span id="scroll-speed">0</span>
+          </div>
+          <div class="metric">
+            <span class="label">Container Index:</span>
+            <span id="container-index">-</span>
+          </div>
+          <div class="metric">
+            <span class="label">Total Containers:</span>
+            <span id="total-containers">-</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Last ESP32 Command</h3>
+        <div class="metrics-grid">
+          <div class="metric">
+            <span class="label">Angle:</span>
+            <span id="last-angle">0</span>
+          </div>
+          <div class="metric">
+            <span class="label">Direction:</span>
+            <span id="last-direction">-</span>
+          </div>
+          <div class="metric">
+            <span class="label">Speed:</span>
+            <span id="last-speed">0</span>
+          </div>
+          <div class="metric">
+            <span class="label">Interval:</span>
+            <span id="last-interval">1000</span>ms
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Motor Controls</h3>
+        <div class="control-grid">
+          <div class="control-group">
+            <label>Speed:</label>
+            <input type="range" id="speed-control" min="0" max="100" value="50">
+            <span id="speed-value">50</span>
+          </div>
+          <div class="control-group">
+            <label>Direction:</label>
+            <select id="direction-control">
+              <option value="1">Forward</option>
+              <option value="0">Stop</option>
+              <option value="-1">Reverse</option>
+            </select>
+          </div>
+          <button onclick="sendMotorCommand()" class="control-btn">Send Command</button>
         </div>
       </div>
 
       <div class="panel" id="debug-panel">
-        <h2>Connection Status</h2>
-        <div class="status" id="connection-status">Checking connection...</div>
+        <h2>ESP32 Master Connection (Serial)</h2>
+        <div class="connection-panel">
+          <div class="connection-info">
+            <div class="status" id="connection-status">Checking connection...</div>
+            <div class="connection-time" id="last-connection-time"></div>
+          </div>
+          <button class="reconnect-button" onclick="reconnectESP32()">Reconnect</button>
+        </div>
+        
+        <div class="transmission-log">
+          <h3>Data Transmission</h3>
+          <div id="transmission-log"></div>
+        </div>
+        
         <div id="debug-log"></div>
       </div>
     </div>
@@ -175,6 +402,8 @@
     <script>
       const debugLog = document.getElementById('debug-log');
       const connectionStatus = document.getElementById('connection-status');
+      const lastConnectionTime = document.getElementById('last-connection-time');
+      const transmissionLog = document.getElementById('transmission-log');
       
       function log(message) {
         const timestamp = new Date().toLocaleTimeString();
@@ -182,37 +411,84 @@
         debugLog.scrollTop = debugLog.scrollHeight;
       }
 
+      function logTransmission(type, data) {
+        const timestamp = new Date().toLocaleTimeString();
+        const item = document.createElement('div');
+        item.className = `transmission-item ${type}`;
+        
+        let content = '';
+        switch(type) {
+          case 'sent':
+            content = `📤 Sent: ${JSON.stringify(data)}`;
+            break;
+          case 'received':
+            content = `📥 Received: ${JSON.stringify(data)}`;
+            break;
+          case 'error':
+            content = `❌ Error: ${data}`;
+            break;
+        }
+        
+        item.innerHTML = `[${timestamp}] ${content}`;
+        transmissionLog.insertBefore(item, transmissionLog.firstChild);
+        
+        // Keep only last 10 transmissions
+        while (transmissionLog.children.length > 10) {
+          transmissionLog.removeChild(transmissionLog.lastChild);
+        }
+      }
+
+      async function reconnectESP32() {
+        try {
+          log('Attempting to reconnect ESP32...');
+          const response = await fetch('/api/reconnect-esp32', { method: 'POST' });
+          if (response.ok) {
+            log('Reconnection request sent successfully');
+          } else {
+            log('Failed to send reconnection request');
+          }
+        } catch (error) {
+          log(`Error during reconnection: ${error.message}`);
+        }
+      }
+
       // Function to send motor commands
       async function sendCommand(speed, direction) {
         try {
-          log(`Sending motor command: speed=${speed}, direction=${direction}`);
+          const command = {
+            currentSpeed: speed,
+            direction: direction === 1 ? 'down' : 'up',
+            scrollPosition: 0,
+            totalDistance: 0,
+            averageSpeed: 0
+          };
+          
+          logTransmission('sent', command);
           const response = await fetch('/api/scroll-metrics', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              currentSpeed: speed,
-              direction: direction === 1 ? 'down' : 'up',
-              scrollPosition: 0,
-              totalDistance: 0,
-              averageSpeed: 0
-            }),
+            body: JSON.stringify(command),
           });
           
           if (!response.ok) {
-            log('Failed to send motor command');
+            logTransmission('error', 'Failed to send motor command');
             connectionStatus.textContent = 'Disconnected';
             connectionStatus.className = 'status disconnected';
+            lastConnectionTime.textContent = `Last attempt: ${new Date().toLocaleTimeString()}`;
           } else {
-            log('Motor command sent successfully');
+            const result = await response.json();
+            logTransmission('received', result);
             connectionStatus.textContent = 'Connected';
             connectionStatus.className = 'status connected';
+            lastConnectionTime.textContent = `Last successful: ${new Date().toLocaleTimeString()}`;
           }
         } catch (error) {
-          log(`Error sending motor command: ${error.message}`);
+          logTransmission('error', error.message);
           connectionStatus.textContent = 'Disconnected';
           connectionStatus.className = 'status disconnected';
+          lastConnectionTime.textContent = `Last error: ${new Date().toLocaleTimeString()}`;
         }
       }
 
@@ -231,6 +507,11 @@
             `Container ${metrics.containerMetrics.containerIndex + 1}` : 'None';
           document.getElementById('time-in-container').textContent = 
             Math.round(metrics.containerMetrics?.timeSpentInContainer || 0) + ' ms';
+          document.getElementById('scroll-position').textContent = metrics.scrollPosition || 0;
+          document.getElementById('scroll-direction').textContent = metrics.direction || '-';
+          document.getElementById('scroll-speed').textContent = metrics.currentSpeed || 0;
+          document.getElementById('container-index').textContent = metrics.containerIndex || '-';
+          document.getElementById('total-containers').textContent = metrics.totalContainers || '-';
           log('Metrics updated successfully');
         } catch (error) {
           console.error('Error updating metrics:', error);
@@ -276,6 +557,84 @@
           connectionStatus.className = 'status disconnected';
           log('Initial connection failed: ' + error.message);
         });
+
+      function addTransmissionLog(type, data, interval) {
+        const log = document.getElementById('transmission-log');
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        
+        const timestamp = new Date().toLocaleTimeString();
+        const typeSpan = document.createElement('span');
+        typeSpan.className = `type ${type.toLowerCase()}`;
+        typeSpan.textContent = type;
+        
+        const dataSpan = document.createElement('span');
+        dataSpan.className = 'data';
+        dataSpan.textContent = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+        
+        const intervalSpan = document.createElement('span');
+        intervalSpan.className = 'interval';
+        intervalSpan.textContent = `${interval}ms`;
+        
+        entry.innerHTML = `
+          <span class="timestamp">[${timestamp}]</span>
+          ${typeSpan.outerHTML}
+          ${dataSpan.outerHTML}
+          ${intervalSpan.outerHTML}
+        `;
+        
+        log.insertBefore(entry, log.firstChild);
+        
+        // Keep only last 50 entries
+        while (log.children.length > 50) {
+          log.removeChild(log.lastChild);
+        }
+      }
+
+      // Modify the existing sendData function to include logging
+      function sendData(data) {
+        updateLastCommand(data);
+        fetch('/api/send-data', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+          if (result.error) {
+            console.error('Error:', result.error);
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+        });
+      }
+
+      // Add error logging
+      function logError(message) {
+        addTransmissionLog('Error', message, 0);
+      }
+
+      // Modify the existing updateConnectionStatus function
+      function updateConnectionStatus(status) {
+        const statusElement = document.getElementById('connection-status');
+        statusElement.textContent = `Status: ${status}`;
+      }
+
+      function updateLastCommand(data) {
+        document.getElementById('last-angle').textContent = data.angle || 0;
+        document.getElementById('last-direction').textContent = data.direction || '-';
+        document.getElementById('last-speed').textContent = data.speed || 0;
+        document.getElementById('last-interval').textContent = data.interval || 1000;
+      }
+
+      function sendMotorCommand() {
+        const speed = document.getElementById('speed-control').value;
+        const direction = document.getElementById('direction-control').value;
+        sendCommand(speed, direction);
+      }
     </script>
   </body>
 </html>

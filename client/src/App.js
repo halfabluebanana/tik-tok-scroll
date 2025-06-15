@@ -9,13 +9,13 @@ import IconInbox from './nav-inbox.svg'
 import IconUser from './nav-user.svg'
 import IconAddVid from './nav-addvid.svg'
 import IconSearch from './nav-search.svg'
-import ScrollMetrics from './components/ScrollMetrics'
 
 import StatLike from './stat-like.svg'
 import StatComment from './stat-comment.svg'
 import StatReshare from './stat-reshare.svg'
 
 import Video from './Video'
+import ScrollMonitor from './ScrollMonitor'
 
 function App() {
   const [videos, setVideos] = React.useState([])
@@ -110,11 +110,11 @@ function App() {
         </FollowingHolder>
       </Header>
       <ScrollWindow id="scroll-window">
+        <ScrollMonitor />
         {videos.slice(2).map(({ url, channel, description, song, likes, messages, shares }, index) =>
           <TikVideo key={url} index={index} url={url} channel={channel} description={description} song={song} likes={likes} messages={messages} shares={shares} />)}
           <Spacer />
       </ScrollWindow>
-      <ScrollMetrics />
       <nav className="tiktik-menu">
        
       </nav>
@@ -123,7 +123,7 @@ function App() {
 }
 
 const TikVideo = ({ url, channel, index, description, song, likes, messages, shares }) => 
-  <VideoHolder>
+  <VideoHolder className="video-container">
       <Video key={url} index={index}  url={url} channel={channel} description={description} song={song} likes={likes} messages={messages} shares={shares} src={require("./placeholder.jpg")}  />
       <VideoInfo>
         <Avatar></Avatar>

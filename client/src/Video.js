@@ -115,6 +115,10 @@ const PlayButton = s.div`
 `
 
 const VideoHolder = s.div`
+  display:flex;
+  padding-top:32px;
+  max-width:1024px;
+  scroll-snap-align: start;
   position:relative;
   min-width:764px;
   background:black;
@@ -123,8 +127,14 @@ const VideoHolder = s.div`
   display:flex;
   align-items:center;
   justify-content:center;
+  min-height: calc(100vh - 71px);
+
   @media(max-width:992px){
+    max-width:none;
     min-width:100vw;
+    min-height:calc(100vh - 71px);
+    padding-top:0px;
+    width:100%;
     border-radius:0px;
   }
 `

@@ -77,20 +77,22 @@ void sendLog(const char* type, const char* message) {
   doc["timestamp"] = millis();
   
   String jsonString = JSON.stringify(doc);
-  Serial.println(jsonString);
+  Serial.write(jsonString.c_str());
+  Serial.write('\n');
 }
 
 void setup() {
   Serial.begin(USE_WEBSOCKET ? 115200 : serial_baud);
   delay(1000);
   
-  Serial.println("\n" + repeatString("=", 50));
-  Serial.println("ESP32 ESP-NOW Master Controller Starting...");
-  Serial.println("Device Role: Master Controller");
-  Serial.println("Communication Mode: " + String(USE_WEBSOCKET ? "WiFi WebSocket" : "Serial USB"));
-  Serial.println("ESP-NOW Protocol: Enabled");
-  Serial.println("Max Slaves: " + String(MAX_SLAVES));
-  Serial.println(repeatString("=", 50));
+  String header = "\n" + repeatString("=", 50) + "\n";
+  header += "ESP32 ESP-NOW Master Controller Starting...\n";
+  header += "Device Role: Master Controller\n";
+  header += "Communication Mode: " + String(USE_WEBSOCKET ? "WiFi WebSocket" : "Serial USB") + "\n";
+  header += "ESP-NOW Protocol: Enabled\n";
+  header += "Max Slaves: " + String(MAX_SLAVES) + "\n";
+  header += repeatString("=", 50) + "\n";
+  Serial.write(header.c_str());
   
   setupESPNOW();
   
@@ -98,14 +100,16 @@ void setup() {
     setupWiFi();
     setupWebSocket();
   } else {
-    Serial.println("\n[STEP 2B] Setting up Serial communication...");
-    Serial.println("Serial baud rate: " + String(serial_baud));
-    Serial.println("Expecting format: 'angle,direction\\n'");
+    String serialSetup = "\n[STEP 2B] Setting up Serial communication...\n";
+    serialSetup += "Serial baud rate: " + String(serial_baud) + "\n";
+    serialSetup += "Expecting format: 'angle,direction\\n'\n";
+    Serial.write(serialSetup.c_str());
   }
   
-  Serial.println("\n" + repeatString("=", 50));
-  Serial.println("Setup Complete! Master is ready to receive commands.");
-  Serial.println(repeatString("=", 50) + "\n");
+  String footer = "\n" + repeatString("=", 50) + "\n";
+  footer += "Setup Complete! Master is ready to receive commands.\n";
+  footer += repeatString("=", 50) + "\n\n";
+  Serial.write(footer.c_str());
 }
 
 void loop() {
@@ -135,30 +139,33 @@ void loop() {
 }
 
 void setupWiFi() {
-  Serial.print("Connecting to WiFi network: ");
-  Serial.println(ssid);
+  String wifiSetup = "Connecting to WiFi network: " + String(ssid) + "\n";
+  Serial.write(wifiSetup.c_str());
   
   WiFi.begin(ssid, password);
   
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
     delay(500);
-    Serial.print(".");
+    Serial.write(".");
     attempts++;
   }
   
   if (WiFi.status() == WL_CONNECTED) {
     wifi_connected = true;
-    Serial.println("\nWiFi connected successfully!");
-    Serial.println("IP address: " + WiFi.localIP().toString());
+    String success = "\nWiFi connected successfully!\n";
+    success += "IP address: " + WiFi.localIP().toString() + "\n";
+    Serial.write(success.c_str());
   } else {
-    Serial.println("\nWiFi connection failed!");
+    String failure = "\nWiFi connection failed!\n";
+    Serial.write(failure.c_str());
     wifi_connected = false;
   }
 }
 
 void setupESPNOW() {
-  Serial.println("Initializing ESP-NOW communication...");
+  String setupMsg = "Initializing ESP-NOW communication...\n";
+  Serial.write(setupMsg.c_str());
   
   WiFi.mode(WIFI_AP_STA);
   
@@ -181,14 +188,16 @@ void setupESPNOW() {
       sendLog("error", message);
       return;
     } else {
-      Serial.print("Added ESP32_" + String(i + 1) + " (MAC: ");
-      printMACAddress(slave_macs[i]);
-      Serial.println(")");
+      String peerMsg = "Added ESP32_" + String(i + 1) + " (MAC: ";
+      peerMsg += printMACAddress(slave_macs[i]);
+      peerMsg += ")\n";
+      Serial.write(peerMsg.c_str());
     }
   }
   
   sendLog("info", "ESP-NOW initialized");
-  Serial.println(repeatString("=", 50));
+  String divider = repeatString("=", 50) + "\n";
+  Serial.write(divider.c_str());
 }
 
 void setupWebSocket() {
@@ -425,10 +434,12 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   sendLog("info", message);
 }
 
-void printMACAddress(uint8_t* mac) {
+String printMACAddress(uint8_t* mac) {
+  String macStr = "";
   for (int i = 0; i < 6; i++) {
-    if (mac[i] < 16) Serial.print("0");
-    Serial.print(mac[i], HEX);
-    if (i < 5) Serial.print(":");
+    if (mac[i] < 16) macStr += "0";
+    macStr += String(mac[i], HEX);
+    if (i < 5) macStr += ":";
   }
+  return macStr;
 } 

@@ -70,6 +70,7 @@ void sendLog(const char* type, const char* message) {
     
     serializeJson(doc, Serial);
     Serial.println();
+    Serial.write()
 }
 
 void setup() {

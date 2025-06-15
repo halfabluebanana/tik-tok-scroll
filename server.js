@@ -128,6 +128,29 @@ app.post('/api/scroll-metrics', (req, res) => {
   }
 });
 
+// Add reconnection endpoint
+app.post('/api/reconnect-esp32', (req, res) => {
+  console.log('\n=== POST /api/reconnect-esp32 ===');
+  if (communicationHandler && communicationHandler.serialPort) {
+    try {
+      // Close the existing port
+      if (communicationHandler.serialPort.isOpen) {
+        communicationHandler.serialPort.close();
+      }
+      
+      // Reinitialize the port
+      communicationHandler.initializeSerialPort();
+      
+      res.json({ status: 'success', message: 'Reconnection initiated' });
+    } catch (error) {
+      console.error('Error during reconnection:', error);
+      res.status(500).json({ status: 'error', message: error.message });
+    }
+  } else {
+    res.status(500).json({ status: 'error', message: 'Communication handler not available' });
+  }
+});
+
 app.get("/", (req, res) => {
   console.log('\\n=== GET /scroll-speeds ===');
   console.log('Serving scrolly page');
@@ -171,6 +194,53 @@ if (communicationHandler && communicationHandler.serialPort) {
     console.log('\nSerial port closed');
   });
 }
+
+// New endpoint for sending data to ESP32
+app.post('/api/send-data', async (req, res) => {
+    try {
+        const data = req.body;
+        
+        // Validate required fields
+        const requiredFields = ['type', 'deviceId', 'angle', 'direction', 'speed', 'interval'];
+        const missingFields = requiredFields.filter(field => !(field in data));
+        
+        if (missingFields.length > 0) {
+            console.error('Missing required fields:', missingFields);
+            return res.status(400).json({ error: `Missing required fields: ${missingFields.join(', ')}` });
+        }
+
+        // Validate data types
+        if (typeof data.angle !== 'number' || 
+            typeof data.direction !== 'number' || 
+            typeof data.speed !== 'number' || 
+            typeof data.interval !== 'number') {
+            console.error('Invalid data types:', data);
+            return res.status(400).json({ error: 'Invalid data types' });
+        }
+
+        // Send data to ESP32
+        console.log('Sending to ESP32:', data);
+        const success = await communicationHandler.sendData(data);
+        
+        if (success) {
+            // Wait for acknowledgment from ESP32
+            const ack = await communicationHandler.waitForAcknowledgment();
+            if (ack) {
+                console.log('Received acknowledgment from ESP32');
+                res.json({ success: true, message: 'Data sent and acknowledged' });
+            } else {
+                console.error('No acknowledgment received from ESP32');
+                res.status(500).json({ error: 'No acknowledgment received' });
+            }
+        } else {
+            console.error('Failed to send data to ESP32');
+            res.status(500).json({ error: 'Failed to send data' });
+        }
+    } catch (error) {
+        console.error('Error sending data:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // Start server
 server.listen(PORT, '0.0.0.0', () => {

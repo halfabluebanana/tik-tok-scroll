@@ -20,8 +20,9 @@ class ScrollHandler {
   }
 
   calculateSpeed(currentPosition, lastPosition, currentTime, lastTime) {
-    const distance = currentPosition - lastPosition;
+    const distance = Math.abs(currentPosition - lastPosition); // Use absolute distance
     const time = currentTime - lastTime;
+    if (time === 0) return 0; // Prevent division by zero
     return (distance / time) * 1000; // Convert to containers per second
   }
 
@@ -33,7 +34,7 @@ class ScrollHandler {
     // Calculate current container
     const newContainer = Math.floor(currentPosition / videoHeight);
     
-    // Calculate speed
+    // Calculate speed (always positive)
     const speed = this.calculateSpeed(
       currentPosition,
       this.lastScrollPosition,

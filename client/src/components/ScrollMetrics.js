@@ -44,108 +44,113 @@ const ScrollMetrics = () => {
   const containerRef = useRef(null);
   const lastScrollTime = useRef(Date.now());
   const containerEnterTime = useRef(Date.now());
-  const currentContainerIndex = useRef(-1);
+  const currentContainerIndex = useRef(0);
   const totalContainers = useRef(0);
+  const debounceTimeout = useRef(null);
+  const DEBOUNCE_DELAY = 100; // 100ms debounce
 
-  const handleScroll = useCallback((event) => {
-    if (!containerRef.current) return;
-
-    const now = Date.now();
-    const timeSinceLastScroll = now - lastScrollTime.current;
-    const container = containerRef.current;
-    
-    // Calculate scroll speed (pixels per second)
-    const scrollSpeed = timeSinceLastScroll > 0 
-      ? Math.abs(event.deltaY) / (timeSinceLastScroll / 1000)
-      : 0;
-    
-    // Update last scroll time
-    lastScrollTime.current = now;
-
-    // Get container metrics
-    const containerMetrics = {
-      containerIndex: currentContainerIndex.current,
-      timeSpentInContainer: now - containerEnterTime.current
-    };
-
-    // Log essential metrics
-    console.log('Scroll Event:', {
-      timestamp: new Date().toISOString(),
-      scrollPosition: container.scrollTop,
-      direction: event.deltaY > 0 ? 'down' : 'up',
-      speed: Math.round(scrollSpeed),
-      containerIndex: currentContainerIndex.current
-    });
-
-    // Send updated metrics to server
-    fetch('/api/scroll-metrics', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        scrollPosition: container.scrollTop,
-        direction: event.deltaY > 0 ? 'down' : 'up',
-        currentSpeed: scrollSpeed,
-        containerIndex: currentContainerIndex.current,
-        totalContainers: totalContainers.current,
-        containerMetrics
-      })
-    })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-    })
-    .catch(error => {
-      console.error('Error sending metrics:', error.message);
-    });
-  }, [currentContainerIndex, totalContainers]);
-
-  useEffect(() => {
-    console.log('[Browser] Setting up scroll event listener');
+  const getCurrentContainerIndex = useCallback(() => {
     const scrollWindow = document.getElementById('scroll-window');
-    if (!scrollWindow) {
-      console.error('[Browser] Scroll window element not found!');
-      return;
+    if (!scrollWindow) return -1;
+
+    const videoContainers = document.querySelectorAll('.video-container');
+    if (!videoContainers.length) return -1;
+
+    const scrollTop = scrollWindow.scrollTop;
+    const windowHeight = window.innerHeight;
+    const centerPoint = scrollTop + (windowHeight / 2);
+
+    for (let i = 0; i < videoContainers.length; i++) {
+      const container = videoContainers[i];
+      const rect = container.getBoundingClientRect();
+      const containerTop = rect.top + scrollTop;
+      const containerBottom = containerTop + rect.height;
+
+      if (centerPoint >= containerTop && centerPoint <= containerBottom) {
+        return i;
+      }
     }
 
-    scrollWindow.addEventListener('scroll', handleScroll);
-    
-    return () => {
-      console.log('[Browser] Cleaning up scroll event listener');
-      scrollWindow.removeEventListener('scroll', handleScroll);
-    };
+    return -1;
+  }, []);
+
+  const handleScroll = useCallback((event) => {
+    const container = event.target;
+    if (!container) return;
+
+    // Clear any existing timeout
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
+    }
+
+    // Set new timeout
+    debounceTimeout.current = setTimeout(() => {
+      const now = Date.now();
+      const timeSinceLastScroll = now - lastScrollTime.current;
+      const scrollSpeed = timeSinceLastScroll > 0 ? Math.abs(event.deltaY) / timeSinceLastScroll : 0;
+      
+      // Update last scroll time
+      lastScrollTime.current = now;
+
+      // Calculate direction
+      const direction = event.deltaY > 0 ? 'down' : 'up';
+
+      // Get current container index
+      const newContainerIndex = getCurrentContainerIndex();
+      
+      // Update container index if changed
+      if (newContainerIndex !== currentContainerIndex.current) {
+        currentContainerIndex.current = newContainerIndex;
+        containerEnterTime.current = now;
+      }
+
+      // Log scroll event
+      console.log('\nScroll Event:', {
+        direction,
+        speed: Math.round(scrollSpeed * 100) / 100,
+        position: Math.round(container.scrollTop),
+        containerIndex: currentContainerIndex.current
+      });
+
+      // Send metrics to server
+      fetch('/api/scroll-metrics', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          scrollPosition: container.scrollTop,
+          direction,
+          currentSpeed: scrollSpeed,
+          containerIndex: currentContainerIndex.current,
+          totalContainers: document.querySelectorAll('.video-container').length,
+          timeInContainer: now - containerEnterTime.current
+        })
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (!data.success) {
+          console.error('\nServer error:', data.error);
+        }
+      })
+      .catch(error => {
+        console.error('\nError sending metrics:', error.message);
+      });
+    }, DEBOUNCE_DELAY);
+  }, [getCurrentContainerIndex]);
+
+  useEffect(() => {
+    const container = document.getElementById('scroll-window');
+    if (container) {
+      container.addEventListener('wheel', handleScroll);
+      return () => container.removeEventListener('wheel', handleScroll);
+    }
   }, [handleScroll]);
-
-  if (!isVisible) {
-    return (
-      <ToggleButton onClick={() => setIsVisible(true)}>
-        Show Metrics
-      </ToggleButton>
-    );
-  }
-
-  return (
-    <MetricsContainer>
-      <ToggleButton onClick={() => setIsVisible(!isVisible)}>
-        {isVisible ? 'Hide Metrics' : 'Show Metrics'}
-      </ToggleButton>
-      {isVisible && (
-        <MetricsPanel>
-          <CloseButton onClick={() => setIsVisible(false)}>×</CloseButton>
-          <MetricItem>
-            <MetricLabel>Scroll Direction:</MetricLabel>
-            <MetricValue>{lastScrollYRef.current > 0 ? 'Scrolling' : 'Idle'}</MetricValue>
-          </MetricItem>
-          <MetricItem>
-            <MetricLabel>Current Container:</MetricLabel>
-            <MetricValue>{lastContainerIndexRef.current + 1}</MetricValue>
-          </MetricItem>
-        </MetricsPanel>
-      )}
-    </MetricsContainer>
-  );
 };
 
 const MetricsContainer = styled.div`

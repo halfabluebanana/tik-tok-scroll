@@ -46,13 +46,11 @@ class SerialHandler {
       const timestamp = new Date().toISOString();
       try {
         const message = JSON.parse(data.toString());
-        console.log(`[${timestamp}] Received from ESP32:`, {
-          type: message.type,
-          deviceId: message.deviceId,
-          status: message.status
-        });
+        // Commented out noisy ESP32 logs
+        // console.log(`[${timestamp}] Received from ESP32:`, { type: message.type, deviceId: message.deviceId, status: message.status });
       } catch (error) {
-        console.log(`[${timestamp}] Raw data from ESP32:`, data.toString());
+        // Commented out noisy ESP32 logs
+        // console.log(`[${timestamp}] Raw data from ESP32:`, data.toString());
       }
     });
 
