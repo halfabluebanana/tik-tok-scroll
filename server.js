@@ -7,6 +7,7 @@ const http = require('http');
 const SerialHandler = require('./src/handlers/serial-handler');
 const VideoHandler = require('./src/handlers/video-handler');
 const WebSocketHandler = require('./src/handlers/websocket-handler');
+const ScrollHandler = require('./src/handlers/scroll-handler');
 
 const PORT = process.env.PORT || 3001;
 
@@ -33,16 +34,15 @@ app.use(express.json());
 
 // Middleware to log requests
 app.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  // Only log non-GET requests to /api/scroll-metrics
   if (req.method !== 'GET' && req.path === '/api/scroll-metrics') {
-    console.log(`[${timestamp}] Received ${req.method} request to ${req.path}`);
+    console.log(`\nReceived ${req.method} request to ${req.path}`);
   }
   next();
 });
 
 // Initialize handlers
 const videoHandler = new VideoHandler();
+const scrollHandler = new ScrollHandler();
 let communicationHandler;
 
 if (CONFIG.useWebSocket) {
@@ -81,30 +81,15 @@ app.use('/uploads/', (req, res, next) => {
   next();
 }, express.static(path.resolve(__dirname, './uploads')));
 
-// Store the latest metrics
-let latestMetrics = {
-  direction: 'nothing',
-  currentSpeed: 0,    // Containers per second (0-255)
-  averageSpeed: 0,    // Rolling 5-second average
-  speedHistory: [],   // For calculating rolling average
-  containerMetrics: {
-    containerIndex: -1,
-    timeSpentInContainer: 0
-  }
-};
-
-// Scroll metrics endpoints
+// GET endpoint for scroll metrics
 app.get('/api/scroll-metrics', (req, res) => {
-  res.json(latestMetrics);
+  res.json(scrollHandler.getLatestMetrics());
 });
 
 // POST endpoint for scroll metrics
 app.post('/api/scroll-metrics', (req, res) => {
-  const timestamp = new Date().toISOString();
   const metrics = req.body;
-  
-  // Log received metrics
-  console.log(`[${timestamp}] Received metrics:`, {
+  console.log('\nReceived metrics:', {
     scrollPosition: metrics.scrollPosition,
     direction: metrics.direction,
     currentSpeed: metrics.currentSpeed,
@@ -112,29 +97,35 @@ app.post('/api/scroll-metrics', (req, res) => {
     totalContainers: metrics.totalContainers
   });
 
-  // Update latest metrics
-  latestMetrics = {
-    ...metrics,
-    timestamp: Date.now()
-  };
+  // Update metrics using the scroll handler
+  const updatedMetrics = scrollHandler.updateMetrics(metrics);
 
-  // Transform data for ESP32
-  const transformedData = {
+  // Transform metrics for ESP32
+  const esp32Data = {
+    type: 'scroll_data',
     deviceId: 0,
-    angle: Math.round(metrics.scrollPosition),
-    direction: metrics.direction,
-    speed: Math.round(metrics.currentSpeed),
-    interval: 1000,
-    delay_offset: 0
+    angle: updatedMetrics.scrollPosition || 0,
+    direction: updatedMetrics.direction === 'down' ? 1 : 0,
+    speed: updatedMetrics.currentSpeed || 0,
+    interval: 1000
   };
 
-  // Send to ESP32 without logging
-  communicationHandler.sendScrollData(transformedData)
-    .catch(error => {
-      console.error(`[${timestamp}] Error sending scroll data:`, error.message);
-    });
+  console.log('\nSending to ESP32:', esp32Data);
 
-  res.json({ success: true });
+  // Send to ESP32
+  if (communicationHandler && communicationHandler.serialPort && communicationHandler.serialPort.isOpen) {
+    communicationHandler.sendScrollData(esp32Data)
+      .then(() => {
+        res.json({ success: true });
+      })
+      .catch(error => {
+        console.error('\nError sending scroll data:', error.message);
+        res.status(500).json({ error: 'Error sending scroll data' });
+      });
+  } else {
+    console.error('\nCommunication handler not available');
+    res.status(500).json({ error: 'Communication handler not available' });
+  }
 });
 
 app.get("/", (req, res) => {
@@ -163,17 +154,31 @@ app.get('*', (req, res) => {
   res.sendFile(path.resolve(__dirname, './client/build/index.html'));
 });
 
+// Serial port event handlers
+if (communicationHandler && communicationHandler.serialPort) {
+  const serialPort = communicationHandler.serialPort;
+  // Commented out noisy ESP32 logs
+  // serialPort.on('data', (data) => {
+  //   const message = data.toString().trim();
+  //   console.log('\nReceived from ESP32:', message);
+  // });
+
+  serialPort.on('error', (err) => {
+    console.error('\nSerial port error:', err.message);
+  });
+
+  serialPort.on('close', () => {
+    console.log('\nSerial port closed');
+  });
+}
 
 // Start server
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server listening on http://0.0.0.0:${PORT}`);
-  console.log(`Communication mode with ESP32: ${CONFIG.useWebSocket ? 'WebSocket' : 'Serial'}`);
-  console.log(`Debug panel available at: http://localhost:${PORT}/scroll-speeds`);
-  
-  if (CONFIG.useWebSocket) {
-    console.log(`ESP32 WebSocket endpoint: ws://localhost:${PORT}/esp32`);
-    console.log('Drop-in debug panel: Include esp32-debug-panel.js in your HTML');
-  } else {
-    console.log(`Serial port: ${CONFIG.serialPort} at ${CONFIG.baudRate} baud`);
+  console.log('\nServer started:');
+  console.log(`- Listening on http://0.0.0.0:${PORT}`);
+  console.log(`- Debug panel: http://localhost:${PORT}/scroll-speeds`);
+  console.log(`- Communication mode: ${CONFIG.useWebSocket ? 'WebSocket' : 'Serial'}`);
+  if (!CONFIG.useWebSocket) {
+    console.log(`- Serial port: ${CONFIG.serialPort} at ${CONFIG.baudRate} baud`);
   }
 });
