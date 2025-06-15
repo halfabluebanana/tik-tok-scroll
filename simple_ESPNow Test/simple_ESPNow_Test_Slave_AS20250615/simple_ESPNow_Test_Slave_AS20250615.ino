@@ -62,18 +62,27 @@ void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
 
 void setup() {
   Serial.begin(115200);
+  delay(1000); // Give some time for serial to initialize
   
   // Set device as a Wi-Fi Station
   WiFi.mode(WIFI_STA);
+  WiFi.disconnect(); // Disconnect from any existing WiFi connection
+  delay(100); // Give some time for disconnect
+  
+  // Print MAC address
+  Serial.print("ESP32 Slave MAC Address: ");
+  Serial.println(WiFi.macAddress());
 
   // Init ESP-NOW
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
     return;
   }
+  Serial.println("ESP-NOW initialized successfully");
 
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
+  Serial.println("Receive callback registered");
   
   Serial.println("ESP32 Slave initialized and ready to receive data");
 }

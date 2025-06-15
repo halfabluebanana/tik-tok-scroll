@@ -14,7 +14,7 @@ typedef struct struct_message {
 struct_message outgoingData;
 
 // MAC address of the Slave ESP32
-uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // Replace with your Slave's MAC address
+uint8_t broadcastAddress[] = {0xF0, 0x24, 0xF9, 0xF5, 0x66, 0x70};  // ESP32_2 ; // Slave 2 MAC address
 
 // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
@@ -62,15 +62,23 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 void setup() {
   Serial.begin(115200);
+  delay(1000); // Give some time for serial to initialize
   
   // Set device as a Wi-Fi Station
   WiFi.mode(WIFI_STA);
+  WiFi.disconnect(); // Disconnect from any existing WiFi connection
+  delay(100); // Give some time for disconnect
+  
+  // Print MAC address
+  Serial.print("ESP32 Master MAC Address: ");
+  Serial.println(WiFi.macAddress());
 
   // Init ESP-NOW
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
     return;
   }
+  Serial.println("ESP-NOW initialized successfully");
 
   // Register peer
   esp_now_peer_info_t peerInfo;
@@ -83,9 +91,13 @@ void setup() {
     Serial.println("Failed to add peer");
     return;
   }
+  Serial.println("Peer added successfully");
 
   // Register for a callback function that will be called when data is sent
   esp_now_register_send_cb(OnDataSent);
+  Serial.println("Send callback registered");
+  
+  Serial.println("ESP32 Master initialized and ready to send data");
 }
 
 void loop() {
@@ -103,7 +115,8 @@ void loop() {
     Serial.println("Sent with success");
   }
   else {
-    Serial.println("Error sending the data");
+    Serial.print("Error sending the data. Error code: ");
+    Serial.println(result);
   }
   
   delay(2000);  // Send data every 2 seconds
