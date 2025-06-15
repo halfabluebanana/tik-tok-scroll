@@ -133,23 +133,23 @@
         <div class="metrics" id="metrics">
           <div class="metric-item">
             <span class="metric-label">Current Speed:</span>
-            <span class="metric-value" id="current-speed">0 px/s</span>
+            <span class="metric-value" id="current-speed">0 containers/s</span>
           </div>
           <div class="metric-item">
             <span class="metric-label">Average Speed:</span>
-            <span class="metric-value" id="average-speed">0 px/s</span>
-          </div>
-          <div class="metric-item">
-            <span class="metric-label">Total Distance:</span>
-            <span class="metric-value" id="total-distance">0 px</span>
-          </div>
-          <div class="metric-item">
-            <span class="metric-label">Scroll Position:</span>
-            <span class="metric-value" id="scroll-position">0 px</span>
+            <span class="metric-value" id="average-speed">0 containers/s</span>
           </div>
           <div class="metric-item">
             <span class="metric-label">Direction:</span>
             <span class="metric-value" id="direction">NONE</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Container:</span>
+            <span class="metric-value" id="container">None</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Time in Container:</span>
+            <span class="metric-value" id="time-in-container">0 ms</span>
           </div>
         </div>
       </div>
@@ -220,11 +220,17 @@
       function updateMetrics(metrics) {
         try {
           console.log('Updating metrics:', metrics);
-          document.getElementById('current-speed').textContent = Math.round(metrics.currentSpeed || 0) + ' px/s';
-          document.getElementById('average-speed').textContent = Math.round(metrics.averageSpeed || 0) + ' px/s';
-          document.getElementById('total-distance').textContent = Math.round(metrics.totalDistance || 0) + ' px';
-          document.getElementById('scroll-position').textContent = Math.round(metrics.scrollPosition || 0) + ' px';
-          document.getElementById('direction').textContent = (metrics.direction || 'none').toUpperCase();
+          document.getElementById('current-speed').textContent = 
+            Math.round(metrics.currentSpeed || 0) + ' containers/s';
+          document.getElementById('average-speed').textContent = 
+            Math.round(metrics.averageSpeed || 0) + ' containers/s';
+          document.getElementById('direction').textContent = 
+            (metrics.direction || 'nothing').toUpperCase();
+          document.getElementById('container').textContent = 
+            metrics.containerMetrics?.containerIndex >= 0 ? 
+            `Container ${metrics.containerMetrics.containerIndex + 1}` : 'None';
+          document.getElementById('time-in-container').textContent = 
+            Math.round(metrics.containerMetrics?.timeSpentInContainer || 0) + ' ms';
           log('Metrics updated successfully');
         } catch (error) {
           console.error('Error updating metrics:', error);

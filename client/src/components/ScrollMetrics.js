@@ -39,85 +39,68 @@ const ScrollMetrics = () => {
   const lastScrollYRef = useRef(0);
   const lastContainerIndexRef = useRef(-1);
   const lastContainerTimeRef = useRef(Date.now());
+  const lastSpeedRef = useRef(0);
+  const smoothingFactor = 0.3; // For exponential smoothing
+  const containerRef = useRef(null);
+  const lastScrollTime = useRef(Date.now());
+  const containerEnterTime = useRef(Date.now());
+  const currentContainerIndex = useRef(-1);
+  const totalContainers = useRef(0);
 
   const handleScroll = useCallback((event) => {
-    const container = event.target;
-    if (!container) {
-      console.error('[Browser] No container element found');
-      return;
-    }
+    if (!containerRef.current) return;
 
-    const currentTime = Date.now();
-    const scrollPosition = container.scrollTop;
+    const now = Date.now();
+    const timeSinceLastScroll = now - lastScrollTime.current;
+    const container = containerRef.current;
     
-    // Calculate direction
-    let direction = 'nothing';
-    if (scrollPosition > lastScrollYRef.current) {
-      direction = 'down';
-    } else if (scrollPosition < lastScrollYRef.current) {
-      direction = 'up';
-    }
+    // Calculate scroll speed (pixels per second)
+    const scrollSpeed = timeSinceLastScroll > 0 
+      ? Math.abs(event.deltaY) / (timeSinceLastScroll / 1000)
+      : 0;
+    
+    // Update last scroll time
+    lastScrollTime.current = now;
 
-    // Find current video container
-    const videoContainers = container.getElementsByTagName('video');
-    let currentContainerIndex = -1;
-    let timeSpentInContainer = 0;
+    // Get container metrics
+    const containerMetrics = {
+      containerIndex: currentContainerIndex.current,
+      timeSpentInContainer: now - containerEnterTime.current
+    };
 
-    for (let i = 0; i < videoContainers.length; i++) {
-      const rect = videoContainers[i].getBoundingClientRect();
-      if (rect.top >= 0 && rect.top <= window.innerHeight) {
-        currentContainerIndex = i;
-        // Calculate time spent in container
-        if (lastContainerIndexRef.current === i) {
-          timeSpentInContainer = currentTime - lastContainerTimeRef.current;
-        } else {
-          lastContainerTimeRef.current = currentTime;
-        }
-        break;
-      }
-    }
-
-    // Log scroll event
-    console.log('[Browser] Scroll Event:', {
+    // Log essential metrics
+    console.log('Scroll Event:', {
       timestamp: new Date().toISOString(),
-      direction,
-      containerMetrics: {
-        containerIndex: currentContainerIndex,
-        timeSpentInContainer
-      }
+      scrollPosition: container.scrollTop,
+      direction: event.deltaY > 0 ? 'down' : 'up',
+      speed: Math.round(scrollSpeed),
+      containerIndex: currentContainerIndex.current
     });
 
-    // Update refs
-    lastScrollYRef.current = scrollPosition;
-    lastContainerIndexRef.current = currentContainerIndex;
-    
-    // Send to server
-    fetch('http://localhost:3001/api/scroll-metrics', {
+    // Send updated metrics to server
+    fetch('/api/scroll-metrics', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        direction,
-        containerMetrics: {
-          containerIndex: currentContainerIndex,
-          timeSpentInContainer
-        }
-      }),
+        scrollPosition: container.scrollTop,
+        direction: event.deltaY > 0 ? 'down' : 'up',
+        currentSpeed: scrollSpeed,
+        containerIndex: currentContainerIndex.current,
+        totalContainers: totalContainers.current,
+        containerMetrics
+      })
     })
     .then(response => {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      return response.json();
-    })
-    .then(data => {
-      console.log('[Browser] Server response:', data);
     })
     .catch(error => {
-      console.error('[Browser] Error sending scroll metrics:', error.message);
+      console.error('Error sending metrics:', error.message);
     });
-  }, []);
+  }, [currentContainerIndex, totalContainers]);
 
   useEffect(() => {
     console.log('[Browser] Setting up scroll event listener');

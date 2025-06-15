@@ -31,11 +31,12 @@ app.use(cors({
 // Parse JSON bodies
 app.use(express.json());
 
-// Add logging middleware
+// Middleware to log requests
 app.use((req, res, next) => {
-  // Only log non-GET /api/scroll-metrics requests
-  if (!(req.method === 'GET' && req.url === '/api/scroll-metrics')) {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  const timestamp = new Date().toISOString();
+  // Only log non-GET requests to /api/scroll-metrics
+  if (req.method !== 'GET' && req.path === '/api/scroll-metrics') {
+    console.log(`[${timestamp}] Received ${req.method} request to ${req.path}`);
   }
   next();
 });
@@ -83,6 +84,9 @@ app.use('/uploads/', (req, res, next) => {
 // Store the latest metrics
 let latestMetrics = {
   direction: 'nothing',
+  currentSpeed: 0,    // Containers per second (0-255)
+  averageSpeed: 0,    // Rolling 5-second average
+  speedHistory: [],   // For calculating rolling average
   containerMetrics: {
     containerIndex: -1,
     timeSpentInContainer: 0
@@ -94,61 +98,44 @@ app.get('/api/scroll-metrics', (req, res) => {
   res.json(latestMetrics);
 });
 
+// POST endpoint for scroll metrics
 app.post('/api/scroll-metrics', (req, res) => {
   const timestamp = new Date().toISOString();
   const metrics = req.body;
   
-  console.log(`[${timestamp}] Received scroll metrics:`, {
+  // Log received metrics
+  console.log(`[${timestamp}] Received metrics:`, {
+    scrollPosition: metrics.scrollPosition,
     direction: metrics.direction,
-    containerMetrics: metrics.containerMetrics
+    currentSpeed: metrics.currentSpeed,
+    containerIndex: metrics.containerIndex,
+    totalContainers: metrics.totalContainers
   });
 
   // Update latest metrics
   latestMetrics = {
-    direction: metrics.direction,
-    containerMetrics: {
-      containerIndex: metrics.containerMetrics.containerIndex,
-      timeSpentInContainer: metrics.containerMetrics.timeSpentInContainer
-    }
+    ...metrics,
+    timestamp: Date.now()
   };
 
-  // Transform and send to ESP32
-  const esp32Message = transformToESP32Message(metrics);
-  console.log(`[${timestamp}] Sending to ESP32:`, {
-    direction: esp32Message.direction,
-    containerIndex: esp32Message.containerMetrics.containerIndex,
-    timeSpentInContainer: esp32Message.containerMetrics.timeSpentInContainer
-  });
+  // Transform data for ESP32
+  const transformedData = {
+    deviceId: 0,
+    angle: Math.round(metrics.scrollPosition),
+    direction: metrics.direction,
+    speed: Math.round(metrics.currentSpeed),
+    interval: 1000,
+    delay_offset: 0
+  };
 
-  // Send to ESP32
-  communicationHandler.sendScrollData(esp32Message)
-    .then(() => {
-      console.log(`[${timestamp}] Successfully sent to ESP32`);
-    })
+  // Send to ESP32 without logging
+  communicationHandler.sendScrollData(transformedData)
     .catch(error => {
-      console.error(`[${timestamp}] Error sending to ESP32:`, error.message);
+      console.error(`[${timestamp}] Error sending scroll data:`, error.message);
     });
 
-  res.json({ status: 'success', metrics: latestMetrics });
+  res.json({ success: true });
 });
-
-// Transform scroll metrics to ESP32 message format
-function transformToESP32Message(metrics) {
-  // Convert direction to numeric value
-  let direction = 0;
-  if (metrics.direction === 'down') direction = 1;
-  else if (metrics.direction === 'up') direction = 0;
-  
-  return {
-    type: 'scroll_data',
-    deviceId: 0, // Broadcast to all devices
-    direction,
-    containerMetrics: {
-      containerIndex: metrics.containerMetrics.containerIndex,
-      timeSpentInContainer: metrics.containerMetrics.timeSpentInContainer
-    }
-  };
-}
 
 app.get("/", (req, res) => {
   console.log('\\n=== GET /scroll-speeds ===');
