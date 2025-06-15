@@ -13,8 +13,13 @@ typedef struct struct_message {
 
 struct_message outgoingData;
 
-// MAC address of the Slave ESP32
-uint8_t slaveAddress[] = {0xF0, 0x24, 0xF9, 0xF5, 0x66, 0x70};  // ESP32_2 MAC address
+// MAC addresses of the Slave ESP32s
+uint8_t slaveAddresses[][6] = {
+  {0xF0, 0x24, 0xF9, 0x04, 0x01, 0x58},  // ESP32_1
+  {0xF0, 0x24, 0xF9, 0xF5, 0x66, 0x70}   // ESP32_2
+};
+
+const int numSlaves = 2;
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   char macStr[18];
@@ -69,18 +74,23 @@ void setup() {
   // Register for a callback function that will be called when data is sent
   esp_now_register_send_cb(OnDataSent);
 
-  // Register peer
-  esp_now_peer_info_t peerInfo = {};
-  memcpy(peerInfo.peer_addr, slaveAddress, 6);
-  peerInfo.channel = 0;  
-  peerInfo.encrypt = false;
+  // Register peers
+  for (int i = 0; i < numSlaves; i++) {
+    esp_now_peer_info_t peerInfo = {};
+    memcpy(peerInfo.peer_addr, slaveAddresses[i], 6);
+    peerInfo.channel = 0;  
+    peerInfo.encrypt = false;
 
-  // Add peer        
-  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-    Serial.println("Failed to add peer");
-    return;
+    // Add peer        
+    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+      Serial.print("Failed to add peer ");
+      Serial.println(i);
+      return;
+    }
+    Serial.print("Peer ");
+    Serial.print(i);
+    Serial.println(" added successfully");
   }
-  Serial.println("Peer added successfully");
   
   Serial.println("ESP32 Master initialized and ready to send data");
 }
@@ -93,15 +103,21 @@ void loop() {
   outgoingData.speed = 1.5;  // Example speed
   outgoingData.interval = 100;  // Example interval
 
-  // Send message via ESP-NOW
-  esp_err_t result = esp_now_send(slaveAddress, (uint8_t *) &outgoingData, sizeof(outgoingData));
-  
-  if (result == ESP_OK) {
-    Serial.println("Sent with success");
-  }
-  else {
-    Serial.print("Error sending the data. Error code: ");
-    Serial.println(result);
+  // Send message to all slaves
+  for (int i = 0; i < numSlaves; i++) {
+    esp_err_t result = esp_now_send(slaveAddresses[i], (uint8_t *) &outgoingData, sizeof(outgoingData));
+    
+    if (result == ESP_OK) {
+      Serial.print("Sent to slave ");
+      Serial.print(i);
+      Serial.println(" with success");
+    }
+    else {
+      Serial.print("Error sending to slave ");
+      Serial.print(i);
+      Serial.print(". Error code: ");
+      Serial.println(result);
+    }
   }
   
   delay(2000);  // Send data every 2 seconds

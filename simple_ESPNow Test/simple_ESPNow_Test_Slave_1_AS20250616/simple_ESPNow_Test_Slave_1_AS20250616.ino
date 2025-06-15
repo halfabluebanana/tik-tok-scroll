@@ -56,7 +56,7 @@ void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
   logData["data"] = dataObj;
   
   // Log to server
-  Serial.print("LOG_TRANSMISSION:slave2,");
+  Serial.print("LOG_TRANSMISSION:slave1,");
   Serial.println(JSON.stringify(logData));
 }
 
@@ -70,7 +70,7 @@ void setup() {
   delay(100); // Give some time for disconnect
   
   // Print MAC address
-  Serial.print("ESP32 Slave 2 MAC Address: ");
+  Serial.print("ESP32 Slave 1 MAC Address: ");
   Serial.println(WiFi.macAddress());
 
   // Init ESP-NOW
@@ -84,7 +84,7 @@ void setup() {
   esp_now_register_recv_cb(OnDataRecv);
   Serial.println("Receive callback registered");
   
-  Serial.println("ESP32 Slave 2 initialized and ready to receive data");
+  Serial.println("ESP32 Slave 1 initialized and ready to receive data");
 }
 
 void loop() {
