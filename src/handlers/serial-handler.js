@@ -6,6 +6,7 @@ class SerialHandler {
     this.baudRate = baudRate;
     this.serialPort = null;
     this.isConnected = false;
+    this.messageBuffer = ''; // Buffer for incomplete messages
     this.initializeSerialPort();
   }
 
@@ -43,41 +44,20 @@ class SerialHandler {
 
     // Add serial port event listeners
     this.serialPort.on('data', (data) => {
-      const message = data.toString().trim();
-      console.log('Received from ESP32:', message);
+      // Add incoming data to buffer
+      this.messageBuffer += data.toString();
       
-      // Parse ESP32 logs
-      if (message.startsWith('LOG_TRANSMISSION:')) {
-        const [_, type, jsonData] = message.split(':');
-        try {
-          const data = JSON.parse(jsonData);
-          // Forward to debug panel
-          fetch('http://localhost:3001/api/log-transmission', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ type, data }),
-          }).catch(error => console.error('Error forwarding log:', error));
-        } catch (error) {
-          console.error('Error parsing ESP32 log:', error);
-        }
-      }
+      // Process complete messages (ended with newline)
+      let messages = this.messageBuffer.split('\n');
+      this.messageBuffer = messages.pop(); // Keep incomplete message in buffer
       
-      // Handle other messages
-      if (message.startsWith('ESP32:')) {
-        const [_, jsonData] = message.split(':');
-        try {
-          const data = JSON.parse(jsonData);
-          this.lastResponse = data;
-          if (this.responseCallback) {
-            this.responseCallback(data);
-            this.responseCallback = null;
-          }
-        } catch (error) {
-          console.error('Error parsing ESP32 response:', error);
+      // Process each complete message
+      messages.forEach(message => {
+        message = message.trim();
+        if (message.length > 0) {
+          this.handleCompleteMessage(message);
         }
-      }
+      });
     });
 
     // Initial attempt to open the port
@@ -111,16 +91,7 @@ class SerialHandler {
       angle: Math.min(180, Math.max(0, Math.round(metrics.scrollPosition * (180/255)))),
       direction: metrics.direction === 'down' ? 1 : 0,
       speed: Math.min(255, Math.max(0, Math.round(metrics.currentSpeed / 10))), // Scale speed to 0-255
-      interval: 100, // Default interval between animations
-      delay_offset: 0, // No delay for broadcast
-      timestamp: Date.now(),
-      containerMetrics: {
-        currentContainer: metrics.containerMetrics.currentContainer || '',
-        timeSpent: metrics.containerMetrics.timeSpent || 0,
-        timeBetween: metrics.containerMetrics.timeBetween || 0,
-        containerIndex: metrics.containerMetrics.containerIndex || 0,
-        totalContainers: metrics.containerMetrics.totalContainers || 0
-      }
+      interval: 100 // Default interval between animations
     };
   }
 
@@ -130,6 +101,11 @@ class SerialHandler {
     if (!this.serialPort) {
       console.error(`[${timestamp}] Serial port not initialized`);
       throw new Error('Serial port not initialized');
+    }
+
+    if (!this.serialPort.isOpen) {
+      console.error(`[${timestamp}] Serial port is not open`);
+      throw new Error('Serial port is not open');
     }
 
     try {
@@ -144,23 +120,16 @@ class SerialHandler {
       });
 
       // Write to serial port
-      await this.serialPort.write(jsonString + '\n');
+      this.serialPort.write(jsonString + '\n');
       console.log(`[${timestamp}] Successfully wrote to serial port`);
 
-      // Listen for response
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          console.warn(`[${timestamp}] No response received from ESP32 within timeout`);
-          resolve(); // Resolve anyway to not block the process
-        }, 1000);
-
-        this.serialPort.once('data', (data) => {
-          clearTimeout(timeout);
-          const response = data.toString().trim();
-          //console.log(`[${timestamp}] Received from ESP32:`, response);
-          resolve(response);
-        });
+      // Return success immediately - don't wait for ESP32 response
+      // The ESP32 will send logs back via LOG_MASTER: messages
+      return Promise.resolve({
+        status: 'sent',
+        timestamp: timestamp
       });
+
     } catch (error) {
       console.error(`[${timestamp}] Error sending data to serial port:`, error.message);
       throw error;
@@ -192,11 +161,19 @@ class SerialHandler {
     console.log('Received metrics:', req.body);
     
     try {
-      const result = await this.sendScrollData(req.body);
+      // Transform the received metrics to ESP32 format
+      const esp32Data = this.transformToESP32Message(req.body);
+      console.log('Transformed to ESP32 format:', esp32Data);
+      
+      // Send to ESP32
+      const result = await this.sendScrollData(esp32Data);
+      
       res.json({ 
         status: 'success',
-        message: result.message,
-        metrics: req.body
+        message: 'Data sent to ESP32',
+        originalMetrics: req.body,
+        esp32Data: esp32Data,
+        result: result
       });
     } catch (error) {
       console.error('Error sending scroll data:', error);
@@ -205,6 +182,35 @@ class SerialHandler {
         error: error.message,
         metrics: req.body
       });
+    }
+  }
+
+  // Handle complete messages from ESP32
+  handleCompleteMessage(message) {
+    
+    // Parse and pretty-print LOG_TRANSMISSION messages
+    if (message.startsWith('LOG_TRANSMISSION:')) {
+      try {
+        const colonIndex = message.indexOf(':', 'LOG_TRANSMISSION:'.length);
+        const jsonData = message.substring(colonIndex + 1);
+        const data = JSON.parse(jsonData);
+        console.log('ESP32 Transmission:', JSON.stringify(data, null, 2));
+      } catch (error) {
+        // JSON parsing failed, just show raw
+      }
+    }
+    
+    // Parse and pretty-print LOG_MASTER messages
+    if (message.startsWith('LOG_MASTER:')) {
+      try {
+        const jsonData = message.substring('LOG_MASTER:'.length);
+        const data = JSON.parse(jsonData);
+        console.log('ESP32 Master:', JSON.stringify(data, null, 2));
+      } catch (error) {
+        // JSON parsing failed, just show raw
+      }
+    } else {
+      console.log('ESP32:', message);
     }
   }
 }

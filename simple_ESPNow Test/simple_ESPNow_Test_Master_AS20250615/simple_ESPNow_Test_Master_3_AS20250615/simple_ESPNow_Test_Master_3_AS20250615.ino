@@ -15,11 +15,19 @@ struct_message outgoingData;
 
 // MAC addresses of the Slave ESP32s
 uint8_t slaveAddresses[][6] = {
-  {0xF0, 0x24, 0xF9, 0x04, 0x01, 0x58},  // ESP32_1
-  {0xF0, 0x24, 0xF9, 0xF5, 0x66, 0x70}   // ESP32_2
+  {0xF0, 0x24, 0xF9, 0x04, 0x01, 0x58},  // ESP32_1 (deviceId = 1)
+  {0xF0, 0x24, 0xF9, 0xF5, 0x66, 0x70},  // ESP32_2 (deviceId = 2)
+  {0xD0, 0xEF, 0x76, 0x7A, 0x35, 0x40}   // ESP32_4 (deviceId = 4)
 };
 
-const int numSlaves = 2;
+// Device ID mapping for each slave
+const uint8_t slaveDeviceIds[] = {1, 2, 4};  // Corresponding device IDs for each slave
+const int numSlaves = 3;
+
+int angle = 90;  // Example angle
+int direction = 1;  // 1 for down, 0 for up
+int speed = 1.5;  // Example speed
+int interval = 100;  // Example interval
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   char macStr[18];
@@ -89,7 +97,9 @@ void setup() {
     }
     Serial.print("Peer ");
     Serial.print(i);
-    Serial.println(" added successfully");
+    Serial.print(" (Device ID: ");
+    Serial.print(slaveDeviceIds[i]);
+    Serial.println(") added successfully");
   }
   
   Serial.println("ESP32 Master initialized and ready to send data");
@@ -99,7 +109,7 @@ void loop() {
   // Send message to all slaves
   for (int i = 0; i < numSlaves; i++) {
     // Set values to send with appropriate device ID
-    outgoingData.deviceId = i + 1;  // Device ID 1 for first slave, 2 for second slave
+    outgoingData.deviceId = slaveDeviceIds[i];  // Use the mapped device ID
     outgoingData.angle = 90;  // Example angle
     outgoingData.direction = 1;  // 1 for down, 0 for up
     outgoingData.speed = 1.5;  // Example speed
@@ -121,6 +131,21 @@ void loop() {
       Serial.println(result);
     }
   }
+
+  // check if we get new data from serial but this probably should just be a callback
   
   delay(2000);  // Send data every 2 seconds
 }
+
+
+//void onSerialDataReceive
+
+// format incoming data to the format that we need to send out
+
+// We log a message to server that we are about to send out data
+
+// Send out data
+
+// Send copy of data back to server for debugging
+
+

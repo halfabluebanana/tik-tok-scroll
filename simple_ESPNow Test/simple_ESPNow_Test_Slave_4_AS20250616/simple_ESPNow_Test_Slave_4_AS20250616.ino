@@ -6,8 +6,8 @@
 
 // ========== CONFIGURATION SECTION ==========
 // Easy to adjust settings
-#define DEVICE_ID 2                    // This device's ID. Fan for Sculpture 1
-#define NUM_MOTORS 1                  // Number of servos connected
+#define DEVICE_ID 4                    // This device's ID
+#define NUM_MOTORS 15                  // Number of servos connected
 #define SERVO_FREQ 50                  // Servo frequency (Hz)
 #define DEBUG_LEVEL 1                  // 0=none, 1=basic, 2=verbose
 
@@ -29,7 +29,7 @@
 #define ANIMATION_UPDATE_INTERVAL 20   // ms between animation frame updates
 #define ANIMATION_DURATION 1000        // ms total animation length
 #define ANIMATION_AMPLITUDE 30         // degrees amplitude for animation
-#define DEFAULT_TRIGGER_INTERVAL 300  // ms standard interval between triggers
+#define DEFAULT_TRIGGER_INTERVAL 5000  // ms standard interval between triggers
 
 // ========== GLOBAL VARIABLES ==========
 // ESP-NOW data structure
@@ -52,7 +52,7 @@ int currentBaseAngle = SERVO_CENTER;   // Base angle from ESP-NOW
 int currentDirection = 1;               // Direction from ESP-NOW
 unsigned long animationTriggerInterval = DEFAULT_TRIGGER_INTERVAL;  // Time between animation triggers
 bool animationSystemEnabled = true;    // Global animation enable/disable
-bool sequentialMovement = false;         // True for sequential, false for parallel movement
+bool sequentialMovement = true;         // True for sequential, false for parallel movement
 
 // Animation timing (non-blocking, single animation cycle)
 unsigned long lastAnimationUpdate = 0;
