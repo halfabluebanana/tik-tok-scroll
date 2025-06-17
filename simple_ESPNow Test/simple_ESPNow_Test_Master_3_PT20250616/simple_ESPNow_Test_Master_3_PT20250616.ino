@@ -17,12 +17,13 @@ struct_message outgoingData;
 uint8_t slaveAddresses[][6] = {
   {0xF0, 0x24, 0xF9, 0x04, 0x01, 0x58},  // ESP32_1 (deviceId = 1)
   {0xF0, 0x24, 0xF9, 0xF5, 0x66, 0x70},  // ESP32_2 (deviceId = 2)
-  {0xD0, 0xEF, 0x76, 0x7A, 0x35, 0x40}   // ESP32_4 (deviceId = 4)
+  {0xD0, 0xEF, 0x76, 0x7A, 0x35, 0x40},  // ESP32_4 (deviceId = 4)
+  {0xBC, 0xDD, 0xC2, 0xC8, 0xA3, 0x3C}   // ESP32_5 (deviceId = 5)
 };
 
 // Device ID mapping for each slave
-const uint8_t slaveDeviceIds[] = {1, 2, 4};  // Corresponding device IDs for each slave
-const int numSlaves = 3;
+const uint8_t slaveDeviceIds[] = {1, 2, 4, 5};  // Corresponding device IDs for each slave
+const int numSlaves = 4;  // Updated number of slaves
 
 // Serial data handling
 String serialBuffer = "";
