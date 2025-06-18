@@ -87,7 +87,7 @@ class SerialHandler {
   transformToESP32Message(metrics) {
     return {
       type: 'scroll_data',
-      deviceId: 0, // Broadcast to all devices
+      deviceId: 1, // Send to Slave 1 specifically
       angle: Math.min(180, Math.max(0, Math.round(metrics.scrollPosition * (180/255)))),
       direction: metrics.direction === 'down' ? 1 : 0,
       speed: Math.min(255, Math.max(0, Math.round(metrics.currentSpeed / 10))), // Scale speed to 0-255
